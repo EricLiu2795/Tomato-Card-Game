@@ -1,11 +1,23 @@
 {
-  "$schema":"node_modules/wrangler/config-schema.json",
-  "name":"tomato-card-club",
-  "main":"server/worker.ts",
-  "compatibility_date":"2026-10-01",
-  "assets":{"directory":"./dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*"]},
-  "durable_objects":{"bindings":[{"name":"ROOMS","class_name":"Room"},{"name":"LIMITER","class_name":"RateLimiter"}]},
-  "migrations":[{"tag":"v1","new_sqlite_classes":["Room","RateLimiter"]}],
-  "vars":{"ROOM_TTL_SECONDS":"86400"},
-  "observability":{"enabled":false}
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tomato-card-club",
+  "main": "server/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ROOMS", "class_name": "Room" },
+      { "name": "LIMITER", "class_name": "RateLimiter" },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Room", "RateLimiter"] },
+  ],
+  "vars": { "ROOM_TTL_SECONDS": "86400" },
+  "observability": { "enabled": false },
 }

@@ -13,7 +13,9 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:persistence": "vitest run --config vitest.persistence.config.ts",
+    "format": "prettier --write client shared server tests docs *.ts *.json *.jsonc *.js *.md index.html"
   },
   "dependencies": {
     "react": "^19.2.0",
