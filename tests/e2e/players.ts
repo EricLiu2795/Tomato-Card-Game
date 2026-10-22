@@ -114,7 +114,7 @@ export function assertPrivateProjection(snapshot: Snapshot): void {
 
 declare global {
   interface Window {
-    __acceptanceSpeech: string[];
+    __acceptancePlayback: Array<{ src: string; volume: number }>;
   }
 }
 
@@ -201,14 +201,19 @@ export async function newPlayers(
       isMobile: mobile,
       hasTouch: mobile,
     });
-    // This spy observes the browser's authorized speech fallback invocation.
-    // It neither changes game state nor sends a network command.
+    // Observe media playback without changing the browser's native behavior.
     await context.addInitScript(() => {
-      window.__acceptanceSpeech = [];
-      Object.defineProperty(window.speechSynthesis, "speak", {
+      window.__acceptancePlayback = [];
+      const originalPlay = HTMLMediaElement.prototype.play;
+      Object.defineProperty(HTMLMediaElement.prototype, "play", {
         configurable: true,
-        value: (utterance: SpeechSynthesisUtterance) =>
-          window.__acceptanceSpeech.push(utterance.text),
+        value: function (this: HTMLMediaElement) {
+          window.__acceptancePlayback.push({
+            src: this.currentSrc || this.src,
+            volume: this.volume,
+          });
+          return originalPlay.call(this);
+        },
       });
     });
     const page = await context.newPage();

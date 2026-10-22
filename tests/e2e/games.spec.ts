@@ -22,6 +22,10 @@ async function verifySocial(players: PlayerBrowser[], testInfo: TestInfo) {
     );
   }
   const [speaker, emojiSender, tomatoSender] = players;
+  // Keep two clients muted so the assertion distinguishes synchronized text
+  // from local voice playback.
+  await emojiSender.page.getByTestId("toggle-sound").click();
+  await tomatoSender.page.getByTestId("toggle-sound").click();
   await speaker.page.getByTestId("open-reactions").click();
   for (const reaction of REACTIONS)
     await expect(
@@ -43,14 +47,42 @@ async function verifySocial(players: PlayerBrowser[], testInfo: TestInfo) {
           .getByTestId("reaction-bubble")
           .filter({ hasText: "对，你说的太对了！" }),
       ).toBeVisible();
-      await expect
-        .poll(() => player.page.evaluate(() => window.__acceptanceSpeech))
-        .toContain("对，你说的太对了！");
     }),
   );
   const voiceEvent = speaker.events.find(
     (event) => event.reactionId === "you-are-so-right",
   )!;
+  const voiceReaction = REACTIONS.find(
+    (reaction) => reaction.id === voiceEvent.reactionId,
+  )!;
+  expect(voiceReaction.audioPath).toBeTruthy();
+  await expect
+    .poll(() =>
+      speaker.page.evaluate(
+        (path) =>
+          window.__acceptancePlayback.some(
+            (playback) => playback.src.endsWith(path) && playback.volume > 0,
+          ),
+        voiceReaction.audioPath!,
+      ),
+    )
+    .toBe(true);
+  expect(
+    await emojiSender.page.evaluate(
+      () =>
+        window.__acceptancePlayback.filter((playback) =>
+          playback.src.includes("/voices/"),
+        ).length,
+    ),
+  ).toBe(0);
+  expect(
+    await tomatoSender.page.evaluate(
+      () =>
+        window.__acceptancePlayback.filter((playback) =>
+          playback.src.includes("/voices/"),
+        ).length,
+    ),
+  ).toBe(0);
   for (const player of players)
     expect(
       player.events.some((event) => event.eventId === voiceEvent.eventId),
@@ -76,10 +108,9 @@ async function verifySocial(players: PlayerBrowser[], testInfo: TestInfo) {
     .getByRole("button", { name: "关闭互动", exact: true })
     .click();
 
-  // Muting keeps the synchronized text visible while suppressing speech calls.
-  await emojiSender.page.getByTestId("toggle-sound").click();
+  // Muted clients keep the synchronized text visible without voice playback.
   const mutedCount = await emojiSender.page.evaluate(
-    () => window.__acceptanceSpeech.length,
+    () => window.__acceptancePlayback.length,
   );
   await tomatoSender.page.getByTestId("open-reactions").click();
   await tomatoSender.page.getByTestId("reaction-bro-really").click();
@@ -98,7 +129,7 @@ async function verifySocial(players: PlayerBrowser[], testInfo: TestInfo) {
       .filter({ hasText: "不是哥们？" }),
   ).toBeVisible();
   expect(
-    await emojiSender.page.evaluate(() => window.__acceptanceSpeech.length),
+    await emojiSender.page.evaluate(() => window.__acceptancePlayback.length),
   ).toBe(mutedCount);
 
   await tomatoSender.page.getByTestId("throw-tomato").click();
@@ -120,8 +151,8 @@ async function verifySocial(players: PlayerBrowser[], testInfo: TestInfo) {
   const observation = await Promise.all(
     players.map(async (player) => ({
       name: player.name,
-      speechInvocations: await player.page.evaluate(
-        () => window.__acceptanceSpeech,
+      playbackInvocations: await player.page.evaluate(
+        () => window.__acceptancePlayback,
       ),
       receivedEventIds: player.events.map((event) => event.eventId),
     })),

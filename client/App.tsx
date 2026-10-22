@@ -21,8 +21,23 @@ import {
   classifyGuandanResponse,
 } from "../shared/guandan-combinations";
 import { classifyDoudizhu } from "../shared/doudizhu-combinations";
-import { findReaction, REACTIONS, type Reaction } from "../shared/soundboard";
+import { findReaction, REACTIONS } from "../shared/soundboard";
+import {
+  unlockAudio,
+  syncAudioSettings,
+  playCue,
+  playReaction,
+  type SoundSettings,
+} from "./audio";
 import { zhCN } from "./i18n";
+import { suggestMoves, selectionCanPlay } from "../shared/move-assistance";
+import {
+  createPractice,
+  practiceSnapshot,
+  applyPractice,
+  stepPracticeBot,
+  type PracticeSession,
+} from "./practice";
 import type {
   Command,
   GameKind,
@@ -310,11 +325,6 @@ function Modal({
   );
 }
 
-interface SoundSettings {
-  enabled: boolean;
-  volume: number;
-  gentle: boolean;
-}
 const defaultSound: SoundSettings = {
   enabled: false,
   volume: 0.65,
@@ -337,51 +347,6 @@ function readName(): string {
     return "";
   }
 }
-function playSound(reaction: Reaction | "tomato", settings: SoundSettings) {
-  if (!settings.enabled || settings.volume <= 0) return;
-  const path =
-    reaction === "tomato" ? "/sounds/tomato.wav" : reaction.audioPath;
-  const cue = () => {
-    const audio = new Audio("/sounds/pop.wav");
-    audio.volume = settings.volume * (settings.gentle ? 0.3 : 0.5);
-    void audio.play().catch(() => undefined);
-  };
-  const fallback = () => {
-    if (
-      reaction === "tomato" ||
-      reaction.category !== "voice" ||
-      settings.gentle ||
-      !("speechSynthesis" in window)
-    ) {
-      cue();
-      return;
-    }
-    const utterance = new SpeechSynthesisUtterance(
-      reaction.label === "666！" ? "六六六！" : reaction.label,
-    );
-    utterance.lang = "zh-CN";
-    utterance.volume = settings.volume;
-    utterance.rate = 1.05;
-    const chinese = speechSynthesis
-      .getVoices()
-      .find((voice) => voice.lang.toLowerCase().startsWith("zh"));
-    if (chinese) utterance.voice = chinese;
-    utterance.onerror = cue;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(utterance);
-  };
-  if (
-    !path ||
-    (settings.gentle && reaction !== "tomato" && reaction.category === "voice")
-  ) {
-    fallback();
-    return;
-  }
-  const audio = new Audio(path);
-  audio.volume = settings.volume * (settings.gentle ? 0.4 : 0.7);
-  void audio.play().catch(fallback);
-}
-
 interface Bubble {
   id: string;
   sender: string;
@@ -398,8 +363,22 @@ interface Throw {
   expires: number;
 }
 const phaseLabels = zhCN.phase;
+const voiceMoods: Record<string, string> = {
+  "you-are-so-right": "俏皮附和",
+  "bro-really": "惊讶反问",
+  "can-you-play": "朋友间的调侃",
+  "we-got-this": "自信满满",
+  "six-six-six": "兴奋夸赞",
+  "stay-calm": "温柔鼓劲",
+  "i-give-up": "无奈吐槽",
+  "how-did-we-lose": "不可思议",
+  beautiful: "开心喝彩",
+  "what-are-you-doing": "疑惑打趣",
+};
 
 export default function App() {
+  const [practice, setPractice] = useState<PracticeSession | null>(null);
+  const practiceRef = useRef<PracticeSession | null>(null);
   const [roomCode, setRoomCode] = useState(() => {
     const code =
       new URLSearchParams(location.search).get("room")?.toUpperCase() || "";
@@ -420,8 +399,9 @@ export default function App() {
   );
   const [selected, setSelected] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<"rank" | "suit">("rank");
+  const [hintIndex, setHintIndex] = useState(0);
+  const [rulesKind, setRulesKind] = useState<GameKind>("guandan");
   const [sound, setSound] = useState<SoundSettings>(readSound);
-  const soundRef = useRef(sound);
   const [panel, setPanel] = useState<
     "rules" | "settings" | "history" | "invite" | null
   >(null);
@@ -440,13 +420,12 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(""), 4800);
   }, []);
   useEffect(() => {
-    soundRef.current = sound;
+    syncAudioSettings(sound);
     try {
       localStorage.setItem("tomato-sound", JSON.stringify(sound));
     } catch {
       /* Private browsing may disable storage. */
     }
-    if (!sound.enabled && "speechSynthesis" in window) speechSynthesis.cancel();
   }, [sound]);
   useEffect(() => {
     const timer = setInterval(() => {
@@ -471,7 +450,7 @@ export default function App() {
           voice: reaction.category === "voice",
         },
       ]);
-      playSound(reaction, soundRef.current);
+      playReaction(reaction);
     } else {
       const stage = stageRef.current;
       const origin = stage
@@ -497,9 +476,47 @@ export default function App() {
             expires: Date.now() + 1800,
           },
         ]);
-      playSound("tomato", soundRef.current);
+      playReaction("tomato");
     }
   }, []);
+
+  const updatePractice = useCallback((next: PracticeSession) => {
+    const newHand =
+      practiceRef.current?.game.handNumber !== next.game.handNumber;
+    practiceRef.current = next;
+    setPractice(next);
+    const view = practiceSnapshot(next);
+    snapshotRef.current = view;
+    setSnapshot(view);
+    setSelected((old) =>
+      newHand
+        ? []
+        : old.filter((id) => view.hand.some((card) => card.id === id)),
+    );
+    setHintIndex(0);
+  }, []);
+
+  useEffect(() => {
+    if (
+      !practice ||
+      practice.game.phase === "finished" ||
+      practice.game.turn === 0
+    )
+      return;
+    const timer = setTimeout(() => {
+      if (practiceRef.current !== practice) return;
+      try {
+        updatePractice(stepPracticeBot(practice));
+      } catch (error) {
+        notify(
+          error instanceof Error
+            ? error.message
+            : "练习暂时中断，请返回大厅重试。",
+        );
+      }
+    }, 1050);
+    return () => clearTimeout(timer);
+  }, [practice, updatePractice, notify]);
 
   useEffect(() => {
     if (!roomCode) return;
@@ -522,6 +539,7 @@ export default function App() {
           return;
         }
         if (data.type === "SNAPSHOT") {
+          setHintIndex(0);
           attempts = 0;
           const newHand =
             snapshotRef.current?.game?.handNumber !== data.game?.handNumber;
@@ -591,6 +609,28 @@ export default function App() {
 
   const send = useCallback(
     (action: RoomAction) => {
+      const local = practiceRef.current;
+      if (local) {
+        if (action.type === "SEND_REACTION" || action.type === "THROW_TOMATO") {
+          receiveEvent({
+            type: "EVENT",
+            eventId: crypto.randomUUID(),
+            at: Date.now(),
+            senderId: "practice-you",
+            kind: action.type === "SEND_REACTION" ? "reaction" : "tomato",
+            ...(action.type === "SEND_REACTION"
+              ? { reactionId: action.reactionId }
+              : { targetId: action.targetId }),
+          });
+          return;
+        }
+        try {
+          updatePractice(applyPractice(local, action));
+        } catch (error) {
+          notify(error instanceof Error ? error.message : "这手牌暂时不能出。");
+        }
+        return;
+      }
       const ws = socketRef.current;
       const current = snapshotRef.current;
       if (!current || ws?.readyState !== WebSocket.OPEN) {
@@ -620,10 +660,27 @@ export default function App() {
       }
       ws.send(JSON.stringify(command));
     },
-    [notify],
+    [notify, receiveEvent, updatePractice],
   );
 
+  const startPractice = (kind: GameKind, name: string, houseRule: boolean) => {
+    socketRef.current?.close();
+    setRoomCode("");
+    setNeedsJoin(false);
+    setBubbles([]);
+    setThrows([]);
+    setConnection("connected");
+    updatePractice(createPractice(kind, name.trim() || "番茄同学", houseRule));
+    playCue("deal");
+    const url = new URL(location.href);
+    url.searchParams.delete("room");
+    history.replaceState(null, "", url);
+    window.scrollTo({ top: 0 });
+  };
+
   const enterRoom = (code: string) => {
+    practiceRef.current = null;
+    setPractice(null);
     snapshotRef.current = null;
     setSnapshot(null);
     setNeedsJoin(false);
@@ -637,6 +694,8 @@ export default function App() {
     history.replaceState(null, "", url);
   };
   const leaveRoom = () => {
+    practiceRef.current = null;
+    setPractice(null);
     socketRef.current?.close();
     snapshotRef.current = null;
     setSnapshot(null);
@@ -646,13 +705,19 @@ export default function App() {
     setConnection("offline");
     setReactionPanel(false);
     setTomatoMode(false);
+    setBubbles([]);
+    setThrows([]);
+    setPanel(null);
     const url = new URL(location.href);
     url.searchParams.delete("room");
     history.replaceState(null, "", url);
   };
   const toggleSound = () => {
     const next = { ...sound, enabled: !sound.enabled };
-    if (next.enabled) playSound(REACTIONS[1], next);
+    syncAudioSettings(next);
+    if (next.enabled) {
+      void unlockAudio().then(() => playCue("win"));
+    }
     setSound(next);
   };
   const copyInvite = async () => {
@@ -672,6 +737,52 @@ export default function App() {
   const game = snapshot?.game;
   const isRoom = !!snapshot && !needsJoin;
   const isMyTurn = !!game && self?.seat === game.turn;
+  const previousAudioSnapshot = useRef<Snapshot | null>(null);
+  useEffect(() => {
+    const previous = previousAudioSnapshot.current;
+    previousAudioSnapshot.current = snapshot;
+    if (
+      !snapshot?.game ||
+      !previous ||
+      previous.roomCode !== snapshot.roomCode ||
+      previous.revision === snapshot.revision
+    )
+      return;
+    const current = snapshot.game;
+    const before = previous.game;
+    if (current.phase === "finished" && before?.phase !== "finished") {
+      const seat =
+        snapshot.players.find((player) => player.id === snapshot.selfId)
+          ?.seat ?? 0;
+      const won =
+        current.kind === "guandan"
+          ? current.winnerTeam === seat % 2
+          : (current.winnerTeam === "landlord") === (current.landlord === seat);
+      playCue(won ? "win" : "lose");
+    } else if (!before || current.handNumber !== before.handNumber) {
+      playCue("deal");
+    } else if (
+      current.trick &&
+      current.trick.cards.map((card) => card.id).join() !==
+        before.trick?.cards.map((card) => card.id).join() &&
+      current.trick.combination.bomb
+    ) {
+      playCue("bomb");
+    } else if (
+      isMyTurn &&
+      (current.turn !== before.turn || current.phase !== before.phase)
+    ) {
+      playCue("turn");
+    } else if (
+      current.trick &&
+      current.trick.cards.map((card) => card.id).join() !==
+        before.trick?.cards.map((card) => card.id).join()
+    ) {
+      playCue("play");
+    } else if (current.phase === "playing" && current.turn !== before.turn) {
+      playCue("pass");
+    }
+  }, [snapshot, isMyTurn]);
   const hand = useMemo(() => {
     if (!snapshot) return [];
     const strength = (card: Card) =>
@@ -709,8 +820,82 @@ export default function App() {
     }
   }, [selection, snapshot, game, self?.seat]);
 
+  const canPlay = !!game && selectionCanPlay(selection, game);
+  const hints = useMemo(
+    () =>
+      game?.phase === "playing" && isMyTurn ? suggestMoves(hand, game) : [],
+    [hand, game, isMyTurn],
+  );
+  const showHint = useCallback(() => {
+    if (!hints.length) {
+      notify("暂未找到推荐组合，可以自行选牌，或选择不出。");
+      return;
+    }
+    const hint = hints[hintIndex % hints.length];
+    setSelected(hint.cards.map((card) => card.id));
+    setHintIndex((value) => value + 1);
+  }, [hints, hintIndex, notify]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        panel ||
+        reactionPanel ||
+        event.repeat ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("input, textarea, select, button, [contenteditable]")
+      )
+        return;
+      if (
+        !game ||
+        game.phase !== "playing" ||
+        !isMyTurn ||
+        pending ||
+        connection !== "connected"
+      )
+        return;
+      if (event.key.toLowerCase() === "h") {
+        event.preventDefault();
+        showHint();
+      }
+      if (event.key === "Escape") setSelected([]);
+      if (event.key === "Enter" && canPlay) {
+        event.preventDefault();
+        send({ type: "PLAY_CARDS", cardIds: selected });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    panel,
+    reactionPanel,
+    game,
+    isMyTurn,
+    pending,
+    connection,
+    showHint,
+    canPlay,
+    send,
+    selected,
+  ]);
+
   return (
-    <div className={`app ${isRoom ? "in-room" : ""}`}>
+    <div
+      className={`app ${isRoom ? "in-room" : ""}`}
+      onPointerDownCapture={() => {
+        if (sound.enabled) unlockAudio();
+      }}
+      onKeyDownCapture={() => {
+        if (sound.enabled) unlockAudio();
+      }}
+    >
       <header className="site-header">
         <button
           className="brand"
@@ -732,7 +917,9 @@ export default function App() {
               >
                 <i />
                 {connection === "connected"
-                  ? zhCN.connection.connected
+                  ? practice
+                    ? "单人练习"
+                    : zhCN.connection.connected
                   : zhCN.connection.reconnecting}
               </span>
               <button className="quiet-button" onClick={leaveRoom}>
@@ -741,7 +928,18 @@ export default function App() {
               </button>
             </>
           ) : (
-            <span className="header-tag">好朋友，好牌局。</span>
+            <>
+              <span className="nav-current">牌局大厅</span>
+              <button
+                className="quiet-button lobby-rules-link"
+                onClick={() => setPanel("rules")}
+              >
+                玩法指南
+              </button>
+              <span className="header-tag">
+                <span className="tiny-tomato" /> 好朋友，好牌局。
+              </span>
+            </>
           )}
           <button
             className={`icon-button ${sound.enabled ? "sound-on" : ""}`}
@@ -765,11 +963,17 @@ export default function App() {
 
       {!isRoom ? (
         <Lobby
+          kind={rulesKind}
+          onKindChange={setRulesKind}
           initialRoom={roomCode}
           restoring={!!roomCode && !needsJoin}
           onEnter={enterRoom}
-          onRules={() => setPanel("rules")}
+          onRules={(kind) => {
+            setRulesKind(kind);
+            setPanel("rules");
+          }}
           onError={notify}
+          onPractice={startPractice}
         />
       ) : (
         <main
@@ -787,7 +991,7 @@ export default function App() {
               <h1>
                 {zhCN.games[snapshot.kind]}
                 <span className="room-code" data-testid="room-code">
-                  #{roomCode}
+                  {practice ? "电脑陪练" : `#${roomCode}`}
                 </span>
               </h1>
             </div>
@@ -807,14 +1011,16 @@ export default function App() {
                 <Icon name="history" size={17} />
                 <span>牌局记录</span>
               </button>
-              <button
-                className="button button-small button-cream"
-                data-testid="invite"
-                onClick={() => void copyInvite()}
-              >
-                <Icon name="link" size={17} />
-                邀请好友
-              </button>
+              {!practice && (
+                <button
+                  className="button button-small button-cream"
+                  data-testid="invite"
+                  onClick={() => void copyInvite()}
+                >
+                  <Icon name="link" size={17} />
+                  邀请好友
+                </button>
+              )}
             </div>
           </div>
           {connection !== "connected" && (
@@ -823,6 +1029,18 @@ export default function App() {
               <button onClick={() => setRetry((value) => value + 1)}>
                 立即重试
               </button>
+            </div>
+          )}
+          {practice && (
+            <div className="practice-banner">
+              <span className="practice-mark">✦</span>
+              <div>
+                <strong>练练手，慢慢来。</strong>
+                <span>
+                  电脑已入座；点「提示」找一手好牌。练习仅在本页进行，刷新后重开。
+                </span>
+              </div>
+              <span className="practice-tag">轻松练习</span>
             </div>
           )}
           <section className="table-shell" aria-label="游戏牌桌">
@@ -894,6 +1112,11 @@ export default function App() {
                         game.turn === seat
                       }
                       mine={player?.id === snapshot.selfId}
+                      teammate={
+                        snapshot.kind === "guandan" &&
+                        seat !== self?.seat &&
+                        seat % 2 === (self?.seat ?? 0) % 2
+                      }
                       host={player?.id === snapshot.hostId}
                       kind={snapshot.kind}
                       landlord={game?.landlord === seat}
@@ -903,7 +1126,9 @@ export default function App() {
                           : undefined
                       }
                       passed={game?.passed.includes(seat)}
-                      choosing={!game || game.phase === "finished"}
+                      choosing={
+                        !practice && (!game || game.phase === "finished")
+                      }
                       disabled={!!pending || connection !== "connected"}
                       tomatoMode={tomatoMode && player?.id !== snapshot.selfId}
                       bubble={bubble}
@@ -948,6 +1173,14 @@ export default function App() {
                   </>
                 ) : game.phase === "finished" ? (
                   <div className="result-card">
+                    <div className="result-confetti" aria-hidden="true">
+                      {Array.from({ length: 12 }, (_, index) => (
+                        <i
+                          key={index}
+                          style={{ "--i": index } as CSSProperties}
+                        />
+                      ))}
+                    </div>
                     <span className="result-spark">✦</span>
                     <span className="eyebrow">这局打得漂亮</span>
                     <h2>
@@ -1054,7 +1287,10 @@ export default function App() {
                 ) : (
                   <>
                     {game.trick ? (
-                      <div className="trick">
+                      <div
+                        className={`trick ${game.trick.combination.bomb ? "bomb-trick" : ""}`}
+                        key={game.trick.cards.map((card) => card.id).join("-")}
+                      >
                         <div className="trick-label">
                           {
                             snapshot.players.find(
@@ -1082,6 +1318,8 @@ export default function App() {
                     )}
                     <div
                       className={`turn-message ${isMyTurn ? "your-turn" : ""}`}
+                      role="status"
+                      aria-live="polite"
                     >
                       <span className="live-dot" />
                       {isMyTurn
@@ -1141,7 +1379,9 @@ export default function App() {
                   : "经典叫分 · 炸弹翻倍"}
                 {game?.tribute?.resisted ? " · 本局抗贡" : ""}
               </span>
-              <span>仅好友邀请 · 无真钱输赢</span>
+              <span>
+                {practice ? "电脑陪练 · 放心试牌" : "仅好友邀请 · 无真钱输赢"}
+              </span>
             </div>
           </section>
           <section className="hand-section" aria-label="我的手牌和操作">
@@ -1153,11 +1393,12 @@ export default function App() {
                 </h2>
                 {selection.length > 0 && (
                   <span
-                    className={`selection-preview ${combination ? "" : "unrecognized"}`}
+                    className={`selection-preview ${(game?.phase === "playing" ? canPlay : !!combination) ? "" : "unrecognized"}`}
+                    aria-live="polite"
                   >
                     已选 {selection.length} 张
                     {combination
-                      ? ` · ${combination.label}`
+                      ? ` · ${combination.label}${game?.phase === "playing" && !canPlay ? " · 还压不过上一手" : ""}`
                       : " · 请选择有效牌型"}
                   </span>
                 )}
@@ -1216,13 +1457,14 @@ export default function App() {
                         : undefined
                     }
                     selected={selected.includes(card.id)}
-                    onClick={() =>
+                    onClick={() => {
+                      playCue("select");
                       setSelected((old) =>
                         old.includes(card.id)
                           ? old.filter((id) => id !== card.id)
                           : [...old, card.id],
-                      )
-                    }
+                      );
+                    }}
                   />
                 ))}
               </div>
@@ -1237,12 +1479,35 @@ export default function App() {
                 <p>你已出完手牌，给朋友们加个油吧。</p>
               </div>
             )}
+            {game && game.phase !== "finished" && (
+              <div className={`table-coach ${isMyTurn ? "coach-active" : ""}`}>
+                <span className="coach-icon">✧</span>
+                <span>
+                  {game.phase === "bidding"
+                    ? "好牌敢叫分：3 分直接成为地主，拿走 3 张底牌。"
+                    : game.phase === "playing"
+                      ? game.trick
+                        ? `跟牌目标：${game.trick.combination.label} · ${game.trick.cards.length} 张。用更大的同类牌型，或炸弹来压。`
+                        : "你可以自由领出。试试对子、顺子等组合，一次多出几张。"
+                      : "跟着桌面提示选一张牌；完成交换后，新的对局就开始了。"}
+                </span>
+                <button
+                  onClick={() => setPanel("rules")}
+                  aria-label="查看详细玩法"
+                >
+                  <Icon name="help" size={17} />
+                </button>
+              </div>
+            )}
             <ActionBar
               snapshot={snapshot}
               selected={selected}
               isMyTurn={isMyTurn}
               pending={!!pending || connection !== "connected"}
               onAction={send}
+              canPlay={canPlay}
+              onHint={showHint}
+              practice={!!practice}
             />
             {reactionPanel && (
               <div
@@ -1295,7 +1560,10 @@ export default function App() {
                         }
                       >
                         <Icon name="sound" size={15} />
-                        {item.label}
+                        <span>
+                          {item.label}
+                          <small>{voiceMoods[item.id]}</small>
+                        </span>
                       </button>
                     ),
                   )}
@@ -1349,7 +1617,7 @@ export default function App() {
           <div className="setting-row">
             <div>
               <strong>牌桌声音</strong>
-              <p>播放表情提示音和中文语音</p>
+              <p>纸牌轻响、回合提醒，还有有情绪的语音表情</p>
             </div>
             <button
               role="switch"
@@ -1360,6 +1628,52 @@ export default function App() {
               onClick={toggleSound}
             >
               <span />
+            </button>
+          </div>
+          <div className="sound-preview">
+            <div>
+              <strong>听听牌桌上的好心情</strong>
+              <p>
+                {sound.enabled
+                  ? sound.gentle
+                    ? "轻声模式播放柔和提示音；关闭后可试听语音。"
+                    : "仅在你的设备试听，不会发送给其他玩家。"
+                  : "先开启牌桌声音，再试听你喜欢的语气。"}
+              </p>
+            </div>
+            <div className="sound-preview-grid">
+              {["we-got-this", "bro-really", "beautiful", "i-give-up"].map(
+                (id) => {
+                  const reaction = findReaction(id)!;
+                  return (
+                    <button
+                      key={id}
+                      data-testid={`preview-${id}`}
+                      disabled={!sound.enabled}
+                      onClick={() => {
+                        unlockAudio();
+                        playReaction(reaction);
+                      }}
+                    >
+                      <Icon name="sound" size={16} />
+                      <span>
+                        {reaction.label}
+                        <small>{voiceMoods[id]}</small>
+                      </span>
+                    </button>
+                  );
+                },
+              )}
+            </div>
+            <button
+              className="text-link"
+              disabled={!sound.enabled}
+              data-testid="preview-table-sound"
+              onClick={() => {
+                void unlockAudio().then(() => playCue("deal"));
+              }}
+            >
+              听听发牌声 <Icon name="sound" size={14} />
             </button>
           </div>
           <label className="volume-control">
@@ -1400,7 +1714,7 @@ export default function App() {
             </button>
           </div>
           <p className="settings-note">
-            语音由设备自带的中文朗读合成，不使用真人仿声。设备不支持中文朗读时会播放提示音。动画跟随系统的“减少动态效果”设置。
+            语音表情使用本地神经语音片段；轻声模式只播放柔和提示音。动画跟随系统的“减少动态效果”设置。
           </p>
           <button
             className="button button-primary full-width"
@@ -1412,7 +1726,7 @@ export default function App() {
       )}
       {panel === "rules" && (
         <Modal title="一桌朋友，一起上手" onClose={closePanel} wide>
-          <Rules initialKind={snapshot?.kind ?? "guandan"} />
+          <Rules initialKind={snapshot?.kind ?? rulesKind} />
         </Modal>
       )}
       {panel === "history" && (
@@ -1490,19 +1804,24 @@ function rankLabel(rank: number) {
 }
 
 function Lobby({
+  kind,
+  onKindChange: setKind,
   initialRoom,
   restoring,
   onEnter,
   onRules,
   onError,
+  onPractice,
 }: {
+  kind: GameKind;
+  onKindChange: (kind: GameKind) => void;
   initialRoom: string;
   restoring: boolean;
   onEnter: (code: string) => void;
-  onRules: () => void;
+  onRules: (kind: GameKind) => void;
   onError: (message: string) => void;
+  onPractice: (kind: GameKind, name: string, houseRule: boolean) => void;
 }) {
-  const [kind, setKind] = useState<GameKind>("guandan");
   const [name, setName] = useState(readName);
   const [code, setCode] = useState(initialRoom);
   const [houseRule, setHouseRule] = useState(true);
@@ -1567,14 +1886,13 @@ function Lobby({
         <div className="hero-copy">
           <span className="eyebrow">
             <span className="tiny-tomato" />
-            你的朋友专属牌桌
+            THE GOOD COMPANY CLUB
           </span>
           <h1>
-            牌可以慢慢打，
+            好朋友，
             <br />
-            朋友要
             <span className="hero-emphasis">
-              常常见。
+              来一局。
               <svg
                 viewBox="0 0 210 16"
                 preserveAspectRatio="none"
@@ -1585,10 +1903,23 @@ function Lobby({
             </span>
           </h1>
           <p>
-            掼蛋，斗地主，还有一点点小吐槽。
+            把日子放慢，把好牌打出去。
             <br />
-            开个房间，喊上老朋友，这就开局。
+            掼蛋、斗地主，还有一桌说不完的快乐。
           </p>
+          <div className="hero-actions">
+            <button
+              className="button hero-play"
+              data-testid="hero-practice"
+              onClick={() => onPractice(kind, name, houseRule)}
+            >
+              <span>先来一局</span>
+              <Icon name="arrow" size={19} />
+            </button>
+            <a className="hero-friends" href="#choose-game">
+              约朋友开桌 <Icon name="arrow" size={16} />
+            </a>
+          </div>
           <div className="hero-features">
             <span>
               <Icon name="check" size={14} />
@@ -1596,7 +1927,7 @@ function Lobby({
             </span>
             <span>
               <Icon name="check" size={14} />
-              好友专属
+              电脑随时陪练
             </span>
             <span>
               <Icon name="check" size={14} />
@@ -1605,6 +1936,9 @@ function Lobby({
           </div>
         </div>
         <div className="hero-art" aria-hidden="true">
+          <span className="art-round-stamp">
+            好 牌 · 好 朋 友<small>EST. 2026</small>
+          </span>
           <span className="art-spark spark-one">✦</span>
           <span className="art-spark spark-two">✧</span>
           <div className="art-table">
@@ -1628,10 +1962,10 @@ function Lobby({
             </div>
             <div className="art-chip chip-one" />
             <div className="art-chip chip-two" />
-            <span className="art-label">今天也要，好好玩。</span>
+            <span className="art-label">GOOD CARDS. GREAT COMPANY.</span>
           </div>
           <span className="art-chat">
-            对，你说的太对了！<span>✧</span>
+            这把，默契拉满！<span>✧</span>
           </span>
           <span className="art-mini-heart">♥</span>
         </div>
@@ -1649,21 +1983,28 @@ function Lobby({
           </span>
         </div>
       )}
+      <div className="lobby-section-title" id="choose-game">
+        <div>
+          <span className="eyebrow">PICK YOUR TABLE</span>
+          <h2>今天，玩点什么？</h2>
+        </div>
+        <span>一张牌桌，两种快乐。</span>
+      </div>
       <section className="lobby-controls">
         <div className="create-panel">
           <div className="section-heading">
             <div>
-              <span className="eyebrow">LET’S PLAY</span>
-              <h2>今天，玩点什么？</h2>
+              <span className="eyebrow">01 / 选个拿手的</span>
+              <h2>你的快乐主场</h2>
             </div>
-            <button className="text-link" onClick={onRules}>
+            <button className="text-link" onClick={() => onRules(kind)}>
               先看看玩法
               <Icon name="arrow" size={15} />
             </button>
           </div>
           <div className="game-picker" role="group" aria-label="选择游戏">
             <button
-              className={`game-choice ${kind === "guandan" ? "chosen" : ""}`}
+              className={`game-choice guandan-choice ${kind === "guandan" ? "chosen" : ""}`}
               data-testid="game-guandan"
               aria-pressed={kind === "guandan"}
               onClick={() => setKind("guandan")}
@@ -1674,7 +2015,7 @@ function Lobby({
               </span>
               <span className="game-choice-copy">
                 <strong>
-                  经典掼蛋<span>热门</span>
+                  经典掼蛋<span>默契搭档</span>
                 </strong>
                 <small>两两搭档，默契拉满</small>
                 <em>4 人 · 双副牌 · 升级竞技</em>
@@ -1684,7 +2025,7 @@ function Lobby({
               </span>
             </button>
             <button
-              className={`game-choice ${kind === "doudizhu" ? "chosen" : ""}`}
+              className={`game-choice doudizhu-choice ${kind === "doudizhu" ? "chosen" : ""}`}
               data-testid="game-doudizhu"
               aria-pressed={kind === "doudizhu"}
               onClick={() => setKind("doudizhu")}
@@ -1693,7 +2034,9 @@ function Lobby({
                 ♠<small>♠</small>
               </span>
               <span className="game-choice-copy">
-                <strong>欢乐斗地主</strong>
+                <strong>
+                  欢乐斗地主<span>斗智斗勇</span>
+                </strong>
                 <small>三人一桌，各显神通</small>
                 <em>3 人 · 叫分抢地主 · 经典玩法</em>
               </span>
@@ -1718,23 +2061,35 @@ function Lobby({
             </label>
             <p>进贡、还贡后，双贡进贡方可弃任意一张手牌。</p>
           </div>
-          <button
-            className="button button-primary create-button"
-            data-testid="create-room"
-            disabled={!!busy}
-            onClick={() => void submit("create")}
-          >
-            <Icon name="plus" size={19} />
-            {busy === "create" ? "正在准备牌桌…" : "开个房间"}
-            <Icon name="arrow" size={19} />
-          </button>
-          <p className="under-button">创建房间后，把邀请链接分享给朋友</p>
+          <div className="lobby-play-actions">
+            <button
+              className="button button-practice"
+              data-testid="start-practice"
+              disabled={!!busy}
+              onClick={() => onPractice(kind, name, houseRule)}
+            >
+              <span>✦</span> 单人练习 <Icon name="arrow" size={17} />
+            </button>
+            <button
+              className="button button-primary create-button"
+              data-testid="create-room"
+              disabled={!!busy}
+              onClick={() => void submit("create")}
+            >
+              <Icon name="plus" size={19} />
+              {busy === "create" ? "正在准备牌桌…" : "开个房间"}
+              <Icon name="arrow" size={19} />
+            </button>
+          </div>
+          <p className="under-button">
+            一个人也能即刻开玩 · 和朋友玩，先填昵称再开房
+          </p>
         </div>
         <aside className="join-panel">
           <span className="join-decoration" aria-hidden="true">
             ✳
           </span>
-          <span className="eyebrow">SAVE YOUR SEAT</span>
+          <span className="eyebrow">02 / 留个位置给你</span>
           <h2>朋友在等你？</h2>
           <p className="join-intro">带上昵称，来牌桌边坐坐。</p>
           <label className="field-label" htmlFor="nickname">
@@ -1798,6 +2153,27 @@ function Lobby({
           </div>
         </aside>
       </section>
+      <section className="club-notes" aria-label="牌桌小贴士">
+        <div>
+          <span className="note-illustration">
+            ♠<i>♥</i>
+          </span>
+          <span>
+            <strong>第一局？轻松上手。</strong>
+            <small>认牌型、找搭档，一分钟认识你的下一局。</small>
+          </span>
+          <button onClick={() => onRules(kind)}>
+            看看玩法 <Icon name="arrow" size={16} />
+          </button>
+        </div>
+        <div>
+          <Tomato size={37} />
+          <span>
+            <strong>牌技可以练，气氛必须到。</strong>
+            <small>表情、语音、扔番茄，给朋友的好牌加点料。</small>
+          </span>
+        </div>
+      </section>
       <section className="lobby-bottom">
         <div className="friend-avatars" aria-hidden="true">
           <span>🍊</span>
@@ -1822,6 +2198,7 @@ function Seat({
   position,
   current,
   mine,
+  teammate,
   host,
   kind,
   landlord,
@@ -1839,6 +2216,7 @@ function Seat({
   position: string;
   current: boolean;
   mine: boolean;
+  teammate: boolean;
   host: boolean;
   kind: GameKind;
   landlord: boolean;
@@ -1898,6 +2276,7 @@ function Seat({
             {mine && <small>你</small>}
           </span>
           <div className="seat-details">
+            {teammate && <span className="partner-label">你的搭档</span>}
             {kind === "guandan" ? (
               <span className={`team-dot team-${seat % 2}`}>
                 {seat % 2 === 0 ? "一队" : "二队"}
@@ -1917,10 +2296,10 @@ function Seat({
               </span>
             ) : (
               <span
-                className={`card-count ${player.count <= 10 ? "low-count" : ""}`}
+                className={`card-count ${player.count <= 5 ? "low-count" : ""}`}
                 data-testid={`count-${seat}`}
               >
-                {player.count <= 10 && "⚑ "}
+                {player.count <= 5 && "⚑ "}
                 {player.count} 张
               </span>
             )}
@@ -1960,12 +2339,18 @@ function ActionBar({
   isMyTurn,
   pending,
   onAction,
+  canPlay,
+  onHint,
+  practice,
 }: {
   snapshot: Snapshot;
   selected: string[];
   isMyTurn: boolean;
   pending: boolean;
   onAction: (action: RoomAction) => void;
+  canPlay: boolean;
+  onHint: () => void;
+  practice: boolean;
 }) {
   const { game, players, selfId, hostId } = snapshot;
   const self = players.find((player) => player.id === selfId)!;
@@ -2017,7 +2402,9 @@ function ActionBar({
       <div className="action-bar finished-action">
         <span>
           {isHost
-            ? "朋友都在，再来一局？"
+            ? practice
+              ? "手感正热，再练一局？"
+              : "朋友都在，再来一局？"
             : "等房主开启下一局，也可以先聊两句。"}
         </span>
         {isHost && (
@@ -2148,6 +2535,15 @@ function ActionBar({
       </span>
       <div>
         <button
+          className="button button-hint"
+          data-testid="hint"
+          disabled={pending || !isMyTurn}
+          onClick={onHint}
+          title="选出一手推荐牌，再点一次换一手"
+        >
+          <span>✧</span> 提示 <kbd>H</kbd>
+        </button>
+        <button
           className="button button-soft"
           data-testid="pass"
           disabled={
@@ -2160,7 +2556,7 @@ function ActionBar({
         <button
           className="button button-primary play-button"
           data-testid="play-cards"
-          disabled={pending || !isMyTurn || !selected.length}
+          disabled={pending || !isMyTurn || !canPlay}
           onClick={() => onAction({ type: "PLAY_CARDS", cardIds: selected })}
         >
           出牌{selected.length > 0 && <span>{selected.length}</span>}
