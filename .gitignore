@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.wrangler/
+.env*
+.dev.vars*
+test-results/
+playwright-report/
+artifacts/*
+!artifacts/.gitkeep
+*.log
+.DS_Store
