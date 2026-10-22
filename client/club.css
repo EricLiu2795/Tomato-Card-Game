@@ -681,15 +681,20 @@ body {
   background: #e5e8d9;
   color: #6d7f5a;
 }
-.practice-banner {
+.practice-tools {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 17px;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 17px;
   margin: 0 0 16px;
   border: 1px solid #dfdfc9;
   border-radius: 10px;
   background: #f0efde;
+}
+.practice-tools.is-paused {
+  border-color: #d7c99e;
+  background: #f6eed8;
 }
 .practice-mark {
   display: grid;
@@ -702,28 +707,138 @@ body {
   font-size: 21px;
   flex: none;
 }
-.practice-banner > div {
+.practice-tools-copy {
   display: flex;
-  gap: 15px;
+  gap: 11px;
   align-items: center;
-  flex-wrap: wrap;
 }
-.practice-banner strong {
+.practice-tools-copy > div {
+  display: grid;
+  gap: 5px;
+}
+.practice-tools strong {
   font-size: 12px;
   color: #536642;
 }
-.practice-banner div > span {
+.practice-tools-copy div > span {
   font-size: 10px;
-  color: #7d876c;
+  color: #677553;
 }
-.practice-tag {
+.practice-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.practice-pace {
+  display: grid;
+  gap: 3px;
+  margin-right: 5px;
   font-size: 9px;
-  color: #718253;
-  border: 1px solid #cbd3af;
-  border-radius: 12px;
-  padding: 4px 9px;
-  margin-left: auto;
+  color: #647450;
+}
+.practice-pace select {
+  font: inherit;
+  font-size: 11px;
+  color: #354f38;
+  border: 0;
+  border-bottom: 1px solid #b9c3a5;
+  background: transparent;
+  padding: 3px 17px 3px 0;
+  cursor: pointer;
+}
+.practice-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #cbd1b7;
+  background: #faf8ed;
+  color: #4c6342;
+  font-size: 11px;
   white-space: nowrap;
+}
+.practice-control > span {
+  font-size: 17px;
+}
+.practice-control:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pause-control[aria-pressed="true"] {
+  background: #31573d;
+  color: #fff9e5;
+  border-color: #31573d;
+}
+.resume-practice {
+  display: flex;
+  align-items: center;
+  gap: 25px;
+  margin-top: 26px;
+  padding: 23px 28px;
+  border: 1px solid #cfd8bd;
+  border-radius: 16px;
+  background: linear-gradient(110deg, #eff0de, #f8f5e9);
+  box-shadow: 0 5px 15px #3e542207;
+}
+.resume-illustration {
+  position: relative;
+  flex: none;
+  width: 72px;
+  height: 67px;
+}
+.resume-illustration span {
+  position: absolute;
+  width: 39px;
+  height: 53px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  border: 1px solid #d0d4bc;
+  background: #fffdf2;
+  color: #335b41;
+  font-size: 25px;
+  transform: rotate(-15deg);
+  top: 7px;
+  left: 4px;
+  box-shadow: 0 3px 0 #cdd2b9;
+}
+.resume-illustration span + span {
+  color: #c8704f;
+  transform: rotate(12deg);
+  left: 29px;
+}
+.resume-copy {
+  flex: 1;
+  min-width: 0;
+}
+.resume-copy .eyebrow {
+  color: #7b8757;
+  font-size: 8px;
+  letter-spacing: 1.8px;
+}
+.resume-copy h2 {
+  font-size: 20px;
+  color: #345139;
+  margin: 5px 0 7px;
+}
+.resume-copy p {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #687957;
+  margin: 0;
+}
+.resume-copy p > span {
+  display: block;
+  font-size: 9px;
+  color: #7c846c;
+}
+.resume-practice > .button {
+  flex: none;
+  gap: 18px;
 }
 .table-shell {
   background-color: #234e3c;
@@ -856,6 +971,39 @@ body {
   color: #7c8b63;
   padding: 5px;
   flex: none;
+}
+.move-coach {
+  align-items: flex-start;
+  padding: 13px 15px;
+  gap: 12px;
+}
+.move-coach .coach-icon {
+  padding-top: 3px;
+}
+.move-coach > div {
+  flex: 1;
+  min-width: 0;
+}
+.move-coach strong {
+  display: block;
+  font-size: 12px;
+  font-weight: 650;
+  color: #4f6841;
+}
+.move-coach p {
+  font-size: 10px;
+  line-height: 1.7;
+  margin: 4px 0 0;
+  color: #687950;
+}
+.move-coach button {
+  border: 1px solid #b6c09c;
+  border-radius: 50%;
+  padding: 0;
+  width: 25px;
+  height: 25px;
+  margin-top: 3px;
+  font-size: 13px;
 }
 .hand-section {
   padding-top: 30px;
@@ -1203,13 +1351,15 @@ body {
   .club-notes button {
     font-size: 11px;
   }
-  .practice-banner > div {
-    gap: 4px;
+  .practice-tools {
     flex-direction: column;
     align-items: flex-start;
   }
-  .practice-tag {
-    display: none;
+  .practice-controls {
+    width: 100%;
+  }
+  .practice-pace {
+    margin-right: auto;
   }
   .table-stage {
     height: 350px;
@@ -1504,18 +1654,6 @@ body {
   .room-tools .quiet-button {
     font-size: 10px;
   }
-  .practice-banner {
-    padding: 10px 11px;
-    margin-bottom: 14px;
-    gap: 9px;
-  }
-  .practice-banner strong {
-    font-size: 11px;
-  }
-  .practice-banner div > span {
-    font-size: 9px;
-    line-height: 1.65;
-  }
   .table-shell {
     border-width: 3px;
     border-radius: 19px;
@@ -1688,8 +1826,95 @@ body {
   .table-stage {
     height: 310px;
   }
-  .practice-banner {
+  .practice-tools {
     margin-bottom: 12px;
+  }
+}
+@media (max-width: 640px) {
+  .practice-tools {
+    padding: 12px;
+    gap: 12px;
+  }
+  .practice-tools-copy strong {
+    font-size: 12px;
+  }
+  .practice-tools-copy div > span {
+    font-size: 10px;
+    line-height: 1.6;
+  }
+  .practice-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 6px;
+  }
+  .practice-control {
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  .practice-pace {
+    display: grid;
+    gap: 2px;
+    margin-right: 5px;
+    font-size: 10px;
+  }
+  .practice-pace select {
+    max-width: 83px;
+    min-height: 30px;
+    padding-right: 3px;
+    font-size: 12px;
+  }
+  .resume-practice {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 14px;
+    padding: 20px 17px;
+    margin-top: 18px;
+  }
+  .resume-illustration {
+    transform: scale(0.7);
+    transform-origin: left center;
+    width: 48px;
+  }
+  .resume-copy h2 {
+    font-size: 16px;
+  }
+  .resume-copy p {
+    font-size: 10px;
+  }
+  .resume-copy p > span {
+    font-size: 8px;
+  }
+  .resume-practice > .button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+  .move-coach strong {
+    font-size: 12px;
+  }
+  .move-coach p {
+    font-size: 11px;
+  }
+  .action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .action-bar > span,
+  .action-bar .active-hint {
+    max-width: none;
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    font-size: 11px;
+  }
+  .action-bar .button {
+    min-width: 0;
+    flex: 1;
+    padding: 11px 10px;
+  }
+  .action-bar .play-button {
+    flex: 1.25;
   }
 }
 @media (prefers-reduced-motion: reduce) {

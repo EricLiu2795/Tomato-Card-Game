@@ -30,7 +30,20 @@ import {
   type SoundSettings,
 } from "./audio";
 import { zhCN } from "./i18n";
-import { suggestMoves, selectionCanPlay } from "../shared/move-assistance";
+import { MoveCoach } from "./MoveCoach";
+import {
+  PracticeTools,
+  ResumePractice,
+  PRACTICE_DELAYS,
+} from "./PracticeTools";
+import {
+  readSavedPractice,
+  savePractice,
+  type SavedPractice,
+  type PracticePace,
+} from "./practice-save";
+import { selectionCanPlay } from "../shared/move-assistance";
+import { rankPracticeMoves } from "./practice-strategy";
 import {
   createPractice,
   practiceSnapshot,
@@ -379,6 +392,15 @@ const voiceMoods: Record<string, string> = {
 export default function App() {
   const [practice, setPractice] = useState<PracticeSession | null>(null);
   const practiceRef = useRef<PracticeSession | null>(null);
+  const [savedPractice, setSavedPractice] = useState(readSavedPractice);
+  const [checkpoint, setCheckpoint] = useState<PracticeSession | null>(null);
+  const [practicePace, setPracticePace] = useState<PracticePace>(
+    () => savedPractice?.pace ?? "normal",
+  );
+  const [practicePaused, setPracticePaused] = useState(false);
+  const practicePausedRef = useRef(false);
+  const [practiceSaved, setPracticeSaved] = useState(true);
+  const [tabHidden, setTabHidden] = useState(document.hidden);
   const [roomCode, setRoomCode] = useState(() => {
     const code =
       new URLSearchParams(location.search).get("room")?.toUpperCase() || "";
@@ -497,14 +519,40 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!practice) return;
+    setPracticeSaved(savePractice(practice, checkpoint, practicePace));
+    setSavedPractice({
+      version: 1,
+      savedAt: Date.now(),
+      session: practice,
+      checkpoint,
+      pace: practicePace,
+    });
+  }, [practice, checkpoint, practicePace]);
+
+  useEffect(() => {
+    const onVisibility = () => setTabHidden(document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  useEffect(() => {
     if (
       !practice ||
+      practicePaused ||
+      panel ||
+      tabHidden ||
       practice.game.phase === "finished" ||
       practice.game.turn === 0
     )
       return;
     const timer = setTimeout(() => {
-      if (practiceRef.current !== practice) return;
+      if (
+        practiceRef.current !== practice ||
+        practicePausedRef.current ||
+        document.hidden
+      )
+        return;
       try {
         updatePractice(stepPracticeBot(practice));
       } catch (error) {
@@ -514,9 +562,17 @@ export default function App() {
             : "练习暂时中断，请返回大厅重试。",
         );
       }
-    }, 1050);
+    }, PRACTICE_DELAYS[practicePace]);
     return () => clearTimeout(timer);
-  }, [practice, updatePractice, notify]);
+  }, [
+    practice,
+    practicePaused,
+    practicePace,
+    panel,
+    tabHidden,
+    updatePractice,
+    notify,
+  ]);
 
   useEffect(() => {
     if (!roomCode) return;
@@ -624,8 +680,17 @@ export default function App() {
           });
           return;
         }
+        if (practicePausedRef.current && action.type !== "START_GAME") return;
         try {
-          updatePractice(applyPractice(local, action));
+          const next = applyPractice(local, action);
+          if (next !== local) {
+            setCheckpoint(action.type === "START_GAME" ? null : local);
+            if (action.type === "START_GAME") {
+              practicePausedRef.current = false;
+              setPracticePaused(false);
+            }
+            updatePractice(next);
+          }
         } catch (error) {
           notify(error instanceof Error ? error.message : "这手牌暂时不能出。");
         }
@@ -663,21 +728,59 @@ export default function App() {
     [notify, receiveEvent, updatePractice],
   );
 
-  const startPractice = (kind: GameKind, name: string, houseRule: boolean) => {
+  const openPractice = (
+    session: PracticeSession,
+    previous: PracticeSession | null = null,
+  ) => {
+    clearTimeout(pendingTimeout.current);
+    pendingRef.current = null;
+    setPending(null);
     socketRef.current?.close();
     setRoomCode("");
     setNeedsJoin(false);
     setBubbles([]);
     setThrows([]);
+    setReactionPanel(false);
+    setTomatoMode(false);
+    setPanel(null);
+    setCheckpoint(previous);
+    practicePausedRef.current = false;
+    setPracticePaused(false);
+    previousAudioSnapshot.current = null;
+    setSelected([]);
     setConnection("connected");
-    updatePractice(createPractice(kind, name.trim() || "番茄同学", houseRule));
-    playCue("deal");
+    updatePractice(session);
+    setRulesKind(session.game.kind);
     const url = new URL(location.href);
     url.searchParams.delete("room");
     history.replaceState(null, "", url);
     window.scrollTo({ top: 0 });
   };
 
+  const startPractice = (kind: GameKind, name: string, houseRule: boolean) => {
+    openPractice(createPractice(kind, name.trim() || "番茄同学", houseRule));
+    playCue("deal");
+  };
+  const resumePractice = () => {
+    if (!savedPractice) return;
+    setPracticePace(savedPractice.pace);
+    openPractice(savedPractice.session, savedPractice.checkpoint);
+  };
+  const undoPractice = () => {
+    if (!checkpoint || !practiceRef.current) return;
+    previousAudioSnapshot.current = null;
+    setCheckpoint(null);
+    setSelected([]);
+    setBubbles([]);
+    setThrows([]);
+    updatePractice(checkpoint);
+    notify("已回到你上次操作之前，电脑的后续出牌也已撤回。");
+  };
+  const togglePracticePause = () => {
+    const next = !practicePausedRef.current;
+    practicePausedRef.current = next;
+    setPracticePaused(next);
+  };
   const enterRoom = (code: string) => {
     practiceRef.current = null;
     setPractice(null);
@@ -694,6 +797,9 @@ export default function App() {
     history.replaceState(null, "", url);
   };
   const leaveRoom = () => {
+    clearTimeout(pendingTimeout.current);
+    pendingRef.current = null;
+    setPending(null);
     practiceRef.current = null;
     setPractice(null);
     socketRef.current?.close();
@@ -821,11 +927,30 @@ export default function App() {
   }, [selection, snapshot, game, self?.seat]);
 
   const canPlay = !!game && selectionCanPlay(selection, game);
-  const hints = useMemo(
-    () =>
-      game?.phase === "playing" && isMyTurn ? suggestMoves(hand, game) : [],
-    [hand, game, isMyTurn],
-  );
+  const hints = useMemo(() => {
+    if (game?.phase !== "playing" || !isMyTurn || !snapshot || !self) return [];
+    const seen = new Set<string>();
+    return rankPracticeMoves(hand, game, self.seat, {
+      publicCounts: Array.from(
+        { length: snapshot.kind === "guandan" ? 4 : 3 },
+        (_, seat) =>
+          snapshot.players.find((player) => player.seat === seat)?.count ?? 0,
+      ),
+    }).filter((move) => {
+      // Equivalent copies of a card should not make successive hints look identical.
+      const key =
+        `${move.combination.kind}:${move.combination.power}:` +
+        move.cards
+          .map(
+            (card) => `${card.rank}${game.kind === "guandan" ? card.suit : ""}`,
+          )
+          .sort()
+          .join(",");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [hand, game, isMyTurn, snapshot, self]);
   const showHint = useCallback(() => {
     if (!hints.length) {
       notify("暂未找到推荐组合，可以自行选牌，或选择不出。");
@@ -865,6 +990,7 @@ export default function App() {
         !game ||
         game.phase !== "playing" ||
         !isMyTurn ||
+        (practice && practicePaused) ||
         pending ||
         connection !== "connected"
       )
@@ -892,6 +1018,8 @@ export default function App() {
     canPlay,
     send,
     selected,
+    practice,
+    practicePaused,
   ]);
 
   return (
@@ -982,6 +1110,9 @@ export default function App() {
           }}
           onError={notify}
           onPractice={startPractice}
+          savedPractice={savedPractice}
+          practiceSaved={practiceSaved}
+          onResume={resumePractice}
         />
       ) : (
         <main
@@ -1040,16 +1171,16 @@ export default function App() {
             </div>
           )}
           {practice && (
-            <div className="practice-banner">
-              <span className="practice-mark">✦</span>
-              <div>
-                <strong>练练手，慢慢来。</strong>
-                <span>
-                  电脑已入座；点「提示」找一手好牌。练习仅在本页进行，刷新后重开。
-                </span>
-              </div>
-              <span className="practice-tag">轻松练习</span>
-            </div>
+            <PracticeTools
+              paused={practicePaused}
+              pace={practicePace}
+              canUndo={!!checkpoint}
+              saved={practiceSaved}
+              finished={game?.phase === "finished"}
+              onPause={togglePracticePause}
+              onPace={setPracticePace}
+              onUndo={undoPractice}
+            />
           )}
           <section className="table-shell" aria-label="游戏牌桌">
             <div className="table-topline">
@@ -1487,31 +1618,33 @@ export default function App() {
                 <p>你已出完手牌，给朋友们加个油吧。</p>
               </div>
             )}
-            {game && game.phase !== "finished" && (
-              <div className={`table-coach ${isMyTurn ? "coach-active" : ""}`}>
-                <span className="coach-icon">✧</span>
-                <span>
-                  {game.phase === "bidding"
-                    ? "好牌敢叫分：3 分直接成为地主，拿走 3 张底牌。"
-                    : game.phase === "playing"
-                      ? game.trick
-                        ? `跟牌目标：${game.trick.combination.label} · ${game.trick.cards.length} 张。用更大的同类牌型，或炸弹来压。`
-                        : "你可以自由领出。试试对子、顺子等组合，一次多出几张。"
-                      : "跟着桌面提示选一张牌；完成交换后，新的对局就开始了。"}
-                </span>
-                <button
-                  onClick={() => setPanel("rules")}
-                  aria-label="查看详细玩法"
-                >
-                  <Icon name="help" size={17} />
-                </button>
-              </div>
-            )}
+            <MoveCoach
+              snapshot={snapshot}
+              selection={selection}
+              combination={combination}
+              canPlay={canPlay}
+              isMyTurn={isMyTurn}
+              suggested={
+                hintIndex > 0 &&
+                !!hints.length &&
+                hints[(hintIndex - 1) % hints.length].cards.length ===
+                  selected.length &&
+                hints[(hintIndex - 1) % hints.length].cards.every((card) =>
+                  selected.includes(card.id),
+                )
+              }
+              paused={!!practice && practicePaused}
+              onRules={() => setPanel("rules")}
+            />
             <ActionBar
               snapshot={snapshot}
               selected={selected}
               isMyTurn={isMyTurn}
-              pending={!!pending || connection !== "connected"}
+              pending={
+                !!pending ||
+                connection !== "connected" ||
+                (!!practice && practicePaused)
+              }
               onAction={send}
               canPlay={canPlay}
               onHint={showHint}
@@ -1820,6 +1953,9 @@ function Lobby({
   onRules,
   onError,
   onPractice,
+  savedPractice,
+  practiceSaved,
+  onResume,
 }: {
   kind: GameKind;
   onKindChange: (kind: GameKind) => void;
@@ -1829,6 +1965,9 @@ function Lobby({
   onRules: (kind: GameKind) => void;
   onError: (message: string) => void;
   onPractice: (kind: GameKind, name: string, houseRule: boolean) => void;
+  savedPractice: SavedPractice | null;
+  practiceSaved: boolean;
+  onResume: () => void;
 }) {
   const [name, setName] = useState(readName);
   const [code, setCode] = useState(initialRoom);
@@ -1921,7 +2060,7 @@ function Lobby({
               data-testid="hero-practice"
               onClick={() => onPractice(kind, name, houseRule)}
             >
-              <span>先来一局</span>
+              <span>{savedPractice ? "新开一局" : "先来一局"}</span>
               <Icon name="arrow" size={19} />
             </button>
             <a className="hero-friends" href="#choose-game">
@@ -1978,6 +2117,13 @@ function Lobby({
           <span className="art-mini-heart">♥</span>
         </div>
       </section>
+      {savedPractice && (
+        <ResumePractice
+          saved={savedPractice}
+          persistent={practiceSaved}
+          onResume={onResume}
+        />
+      )}
       {initialRoom && (
         <div
           className={`invite-banner ${restoring ? "restoring" : ""}`}

@@ -6,7 +6,7 @@ import {
   legalReturnCards,
   legalTributeCards,
 } from "../shared/guandan";
-import { suggestMoves } from "../shared/move-assistance";
+import { choosePracticeBid, choosePracticePlay } from "./practice-strategy";
 import type {
   GameAction,
   GameKind,
@@ -197,30 +197,6 @@ export function applyPractice(
   return nextSession(session, game);
 }
 
-function bidFor(
-  hand: GameState["hands"][number],
-  game: Extract<GameState, { kind: "doudizhu" }>,
-): number {
-  const counts = new Map<number, number>();
-  for (const card of hand)
-    counts.set(card.rank, (counts.get(card.rank) ?? 0) + 1);
-  const jokers = hand.filter((card) => card.rank >= 15).length;
-  const pairs = [...counts.values()].filter((count) => count >= 2).length;
-  const triples = [...counts.values()].filter((count) => count >= 3).length;
-  const strength = jokers * 2 + pairs + triples * 2;
-  const preferred = strength >= 8 ? 3 : strength >= 5 ? 2 : 1;
-  return preferred > game.highBid ? preferred : game.highBid === 0 ? 1 : 0;
-}
-
-function botIsTeammateLeader(game: GameState, seat: number): boolean {
-  const leader = game.trick?.seat;
-  if (leader === undefined || leader === null) return false;
-  if (game.kind === "guandan") return leader % 2 === seat % 2;
-  return (
-    game.landlord !== null && seat !== game.landlord && leader !== game.landlord
-  );
-}
-
 function weakestCard(
   hand: GameState["hands"][number],
   level?: number,
@@ -238,7 +214,7 @@ function botAction(game: GameState, seat: number): GameAction | null {
   if (!hand.length) return null;
   if (game.kind === "doudizhu") {
     if (game.phase === "bidding")
-      return { type: "BID", value: bidFor(hand, game) };
+      return { type: "BID", value: choosePracticeBid(hand, publicGame(game)) };
     if (game.phase !== "playing") return null;
   } else {
     if (game.phase === "tribute" && game.tribute?.contributors.includes(seat)) {
@@ -267,26 +243,9 @@ function botAction(game: GameState, seat: number): GameAction | null {
     if (game.phase !== "playing") return null;
   }
 
-  const view = publicGame(game);
-  const moves = suggestMoves(hand, view);
-  if (botIsTeammateLeader(game, seat)) {
-    const winningMove = moves.find((move) => move.cards.length === hand.length);
-    return winningMove
-      ? {
-          type: "PLAY_CARDS",
-          cardIds: winningMove.cards.map((card) => card.id),
-        }
-      : { type: "PASS" };
-  }
-  if (moves[0])
-    return {
-      type: "PLAY_CARDS",
-      cardIds: moves[0].cards.map((card) => card.id),
-    };
-  if (game.trick) return { type: "PASS" };
-  // The shared suggester is intentionally bounded. A single card is always
-  // a legal lead, so retain progress if a large hand exhausts that bound.
-  return { type: "PLAY_CARDS", cardIds: [hand[0].id] };
+  return choosePracticePlay(hand, publicGame(game), seat, {
+    publicCounts: game.hands.map((cards) => cards.length),
+  });
 }
 
 /** Advance exactly one bot action. Seat 0 is deliberately never automated. */
