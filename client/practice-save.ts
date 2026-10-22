@@ -22,6 +22,13 @@ export interface SavedPractice {
   pace: PracticePace;
 }
 
+export type PracticeSaveReadResult =
+  | { status: "ok"; save: SavedPractice; raw: string }
+  | { status: "missing" }
+  | { status: "invalid"; raw: string; reason: string }
+  | { status: "unsupported"; raw: string; reason: string }
+  | { status: "unavailable"; reason: string };
+
 export const PRACTICE_SAVE_KEY = "tomato-practice-v1";
 
 // A normal game is only a few kilobytes. This guard keeps a pasted or corrupt
@@ -374,6 +381,89 @@ function isGuandan(value: JsonRecord): value is JsonRecord & GuandanState {
     !isInt(value.advancement, 0, 4)
   )
     return false;
+  const tribute = value.tribute as TributeState | null;
+  const hands = value.hands as Card[][];
+  if (tribute) {
+    const froms = new Set(tribute.pairs.map((pair) => pair.from));
+    const tos = new Set(tribute.pairs.map((pair) => pair.to));
+    if (
+      froms.size !== tribute.pairs.length ||
+      tos.size !== tribute.pairs.length ||
+      froms.size !== tribute.contributors.length ||
+      tribute.pairs.some(
+        (pair) =>
+          !tribute.contributors.includes(pair.from) ||
+          !(value.previousFinish as number[]).includes(pair.to),
+      )
+    )
+      return false;
+  }
+  if (value.phase === "tribute") {
+    if (
+      !tribute ||
+      tribute.resisted ||
+      (value.previousFinish as number[]).length !== 4 ||
+      tribute.contributors.length === 0 ||
+      !tribute.contributors.includes(value.turn as number) ||
+      Object.prototype.hasOwnProperty.call(
+        tribute.selections,
+        String(value.turn),
+      ) ||
+      !Object.entries(tribute.selections).every(
+        ([seat, cardId]) =>
+          tribute.contributors.includes(Number(seat)) &&
+          hands[Number(seat)]?.some((card) => card.id === cardId),
+      )
+    )
+      return false;
+  }
+  if (value.phase === "return") {
+    if (
+      !tribute ||
+      tribute.resisted ||
+      (value.previousFinish as number[]).length !== 4 ||
+      !tribute.pairs.every((pair) => pair.tribute !== undefined) ||
+      !tribute.pairs.every(
+        (pair) =>
+          hands[pair.from]?.some((card) => card.id === pair.tribute?.id) &&
+          (pair.returnCard === undefined ||
+            hands[pair.to]?.some((card) => card.id === pair.returnCard?.id)),
+      ) ||
+      !tribute.returned.every((seat) =>
+        tribute.pairs.some(
+          (pair) => pair.to === seat && pair.returnCard !== undefined,
+        ),
+      ) ||
+      !tribute.pairs.some(
+        (pair) =>
+          pair.to === value.turn &&
+          !tribute.returned.includes(value.turn as number),
+      )
+    )
+      return false;
+  }
+  if (value.phase === "discard") {
+    if (
+      !tribute ||
+      tribute.resisted ||
+      tribute.kind !== "double" ||
+      tribute.returned.length !== 2 ||
+      !tribute.contributors.includes(value.turn as number) ||
+      tribute.discarded.includes(value.turn as number) ||
+      !tribute.discarded.every((seat) => tribute.contributors.includes(seat))
+    )
+      return false;
+  }
+  if (value.phase === "playing" && tribute && !tribute.resisted) {
+    const returned =
+      tribute.returned.length === tribute.pairs.length &&
+      tribute.pairs.every((pair) => pair.returnCard !== undefined);
+    const discardResolved =
+      tribute.kind !== "double" ||
+      !value.houseRule ||
+      tribute.discarded.length === tribute.contributors.length;
+    if (!returned || !discardResolved) return false;
+  }
   return true;
 }
 
@@ -446,6 +536,12 @@ function isDoudizhu(value: JsonRecord): value is JsonRecord & DoudizhuState {
     !Array.isArray(value.playCounts) ||
     value.playCounts.length !== 3 ||
     !value.playCounts.every((count) => isInt(count, 0, 1_000_000))
+  )
+    return false;
+  if (
+    value.phase === "bidding" &&
+    ((value.landlord as number | null) !== null ||
+      (value.bids as (number | null)[])[value.turn as number] !== null)
   )
     return false;
   return true;
@@ -535,14 +631,58 @@ function defaultStorage(): Storage | undefined {
 export function readSavedPractice(
   storage?: Pick<Storage, "getItem">,
 ): SavedPractice | null {
+  const result = readPracticeSaveResult(storage);
+  return result.status === "ok" ? result.save : null;
+}
+
+export function readPracticeSaveResult(
+  storage?: Pick<Storage, "getItem">,
+): PracticeSaveReadResult {
+  let raw: string | null;
   try {
-    const raw = (storage ?? defaultStorage())?.getItem(PRACTICE_SAVE_KEY);
-    if (!raw || raw.length > MAX_SAVE_BYTES) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return isSavedPractice(parsed) ? parsed : null;
+    const target = storage ?? defaultStorage();
+    if (!target)
+      return {
+        status: "unavailable",
+        reason: "本地存储不可用，无法读取练习进度。",
+      };
+    raw = target.getItem(PRACTICE_SAVE_KEY);
   } catch {
-    return null;
+    return {
+      status: "unavailable",
+      reason: "本地存储读取失败，原始数据未被修改。",
+    };
   }
+  if (raw === null) return { status: "missing" };
+  if (raw.length > MAX_SAVE_BYTES)
+    return {
+      status: "invalid",
+      raw,
+      reason: "练习进度文件过大，无法安全读取。",
+    };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {
+      status: "invalid",
+      raw,
+      reason: "练习进度不是有效的 JSON，已保留原始数据。",
+    };
+  }
+  if (isRecord(parsed) && parsed.version !== undefined && parsed.version !== 1)
+    return {
+      status: "unsupported",
+      raw,
+      reason: "练习进度版本不受支持，请升级应用后重试。",
+    };
+  if (!isSavedPractice(parsed))
+    return {
+      status: "invalid",
+      raw,
+      reason: "练习进度格式无效，已保留原始数据。",
+    };
+  return { status: "ok", save: parsed, raw };
 }
 
 export function savePractice(

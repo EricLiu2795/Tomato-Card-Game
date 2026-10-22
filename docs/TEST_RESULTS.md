@@ -1,5 +1,15 @@
 # 实测结果 · 2026-10-22
 
+## Practice-save and mobile review fixes
+
+Starting from `b73e4f9` on `feat/first-playable`, the review fixes preserve the existing features and add mouse/pen range selection.
+
+- Final `npm run check`: **234 unit tests in 10 files**, TypeScript, ESLint, and production build passed.
+- Full `npx playwright test`: **36/36 passed (15.1 minutes)**, retaining the original 16 scenarios. Both multiplayer games completed rounds; Guandan also completed double tribute, both returns, discard/skip, and reconnects in portrait/landscape.
+- After the full run, a final CSS spacing adjustment eliminated an initial card-row overlap. The stronger mobile checks plus drag tests then passed **9/9 (18.7 seconds)**, followed by the final `npm run check` above.
+- Cross-tab ownership, concurrent activity/reloads, recovery backup failures, malformed/unsupported saves, weak-pattern coaching, undo, pause, all bot speeds, practice/multiplayer transitions, three-consecutive-pairs hints, focused H/Esc shortcuts, and disabled invalid plays passed their regressions.
+- [Review report, exact commands, reproduction notes, before/after screenshots, and limitations](REVIEW_FIXES.md). The report explicitly records the coaching reproduction-order deviation. Mobile checks are browser emulation, not physical-device testing. No Cloudflare deployment was performed.
+
 ## 合并远程修复后的最终验证
 
 追加改进已与远程 `962f744` 合并，保留三连对推荐和聚焦按钮后的 H/Esc 修复。冲突仅在说明文档，已整合两边记录。

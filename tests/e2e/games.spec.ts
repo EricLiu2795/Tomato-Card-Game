@@ -352,6 +352,13 @@ test("four independent browsers finish Guandan, advance and resolve the next tri
     }
     const tribute = players[0].snapshot!.game!.tribute!;
     expect(tribute.kind).toBe("double");
+    // Both contributors and recipients exercise portrait and landscape action
+    // bars during real tribute, return and discard, including reconnects.
+    for (const [index, player] of players.entries()) {
+      await player.page.setViewportSize(
+        index < 2 ? { width: 390, height: 844 } : { width: 844, height: 390 },
+      );
+    }
     await screenshot(
       players.find(
         (player) => player.seat === players[0].snapshot!.game!.turn,
@@ -410,6 +417,7 @@ test("four independent browsers finish Guandan, advance and resolve the next tri
       tributeKind: tribute.kind,
       reconnectedAfterTribute,
       reconnectedAfterDiscard,
+      mobileTributeControls: true,
       coverageNote: tribute.resisted
         ? "All three real next deals resisted tribute; discard path not observed in this run."
         : "Double tribute, both returns, one discard, one skip and mid-phase reconnects observed.",

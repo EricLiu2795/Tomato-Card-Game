@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { zhCN } from "./i18n";
 import type { PracticePace, SavedPractice } from "./practice-save";
 
@@ -26,9 +27,11 @@ export function PracticeTools({
   onPace: (pace: PracticePace) => void;
   onUndo: () => void;
 }) {
+  const [optionsOpen, setOptionsOpen] = useState(false);
+
   return (
     <section
-      className={`practice-tools ${paused ? "is-paused" : ""}`}
+      className={`practice-tools ${paused ? "is-paused" : ""} ${optionsOpen ? "options-open" : ""}`}
       aria-label="练习控制"
     >
       <div className="practice-tools-copy">
@@ -47,27 +50,39 @@ export function PracticeTools({
         </div>
       </div>
       <div className="practice-controls">
-        <label className="practice-pace">
-          <span>电脑节奏</span>
-          <select
-            data-testid="practice-pace"
-            value={pace}
-            onChange={(event) => onPace(event.target.value as PracticePace)}
-          >
-            <option value="relaxed">慢慢想</option>
-            <option value="normal">刚刚好</option>
-            <option value="quick">快一点</option>
-          </select>
-        </label>
         <button
-          className="practice-control"
-          data-testid="practice-undo"
-          disabled={!canUndo}
-          onClick={onUndo}
-          title="回到你上次操作之前，电脑的后续出牌也会撤回"
+          type="button"
+          className="practice-options-toggle"
+          data-testid="practice-options"
+          aria-expanded={optionsOpen}
+          onClick={() => setOptionsOpen((value) => !value)}
         >
-          <span aria-hidden="true">↶</span> 悔一步
+          <span aria-hidden="true">⚙</span>{" "}
+          {optionsOpen ? "收起设置" : "更多设置"}
         </button>
+        <div className="practice-secondary">
+          <label className="practice-pace">
+            <span>电脑节奏</span>
+            <select
+              data-testid="practice-pace"
+              value={pace}
+              onChange={(event) => onPace(event.target.value as PracticePace)}
+            >
+              <option value="relaxed">慢慢想</option>
+              <option value="normal">刚刚好</option>
+              <option value="quick">快一点</option>
+            </select>
+          </label>
+          <button
+            className="practice-control"
+            data-testid="practice-undo"
+            disabled={!canUndo}
+            onClick={onUndo}
+            title="回到你上次操作之前，电脑的后续出牌也会撤回"
+          >
+            <span aria-hidden="true">↶</span> 悔一步
+          </button>
+        </div>
         <button
           className="practice-control pause-control"
           data-testid="practice-pause"

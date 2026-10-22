@@ -119,3 +119,39 @@ test("practice shortcuts work from focused buttons without stealing Enter", asyn
   await expect(firstCard).toHaveAttribute("aria-pressed", "false");
   await expect(cards).toHaveCount(27);
 });
+
+test("invalid patterns stay disabled and bot-turn coaching never invites a play", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.clock.install();
+  await openPractice(page);
+  await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 60_000);
+  const cards = page.getByTestId("hand").locator("[data-card-id]");
+  const ids = await cards.evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("data-card-id")!),
+  );
+  const ordinary = ids.filter((id) => {
+    const rank = Number(id.split("-")[2]);
+    return rank >= 3 && rank <= 14;
+  });
+  const different = ordinary.find(
+    (id) => id.split("-")[2] !== ordinary[0].split("-")[2],
+  )!;
+  await page.getByTestId(`card-${ordinary[0]}`).click();
+  await page.getByTestId(`card-${different}`).click();
+  await expect(page.getByTestId("play-cards")).toBeDisabled();
+  await expect(page.getByTestId("move-coach")).toContainText(
+    "还没组成一种牌型",
+  );
+  await page.keyboard.press("Escape");
+
+  await cards.last().click();
+  await page.getByTestId("play-cards").click();
+  await expect(cards).toHaveCount(26);
+  await cards.first().click();
+  await expect(page.getByTestId("move-coach")).toContainText("还没轮到你");
+  await expect(page.getByTestId("move-coach")).not.toContainText("点「出牌」");
+  await expect(page.getByTestId("play-cards")).toBeDisabled();
+  await expect(page.getByTestId("room")).toHaveAttribute("data-revision", "1");
+});

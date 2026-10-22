@@ -1,0 +1,44 @@
+{
+  "scrollY": 0,
+  "viewport": {
+    "width": 844,
+    "height": 390
+  },
+  "document": {
+    "scrollWidth": 844,
+    "scrollHeight": 572
+  },
+  "practiceTools": {
+    "top": 93.390625,
+    "bottom": 144.890625,
+    "left": 24,
+    "right": 819.984375,
+    "width": 795.984375,
+    "height": 51.5
+  },
+  "actionBar": {
+    "top": 324.203125,
+    "bottom": 390,
+    "left": 458,
+    "right": 844,
+    "width": 386,
+    "height": 65.796875
+  },
+  "tableShell": {
+    "top": 150.890625,
+    "bottom": 534.078125,
+    "left": 24,
+    "right": 458.4375,
+    "width": 434.4375,
+    "height": 383.1875
+  },
+  "hand": {
+    "top": 181.890625,
+    "bottom": 281.890625,
+    "left": 477.4375,
+    "right": 814.984375,
+    "width": 337.546875,
+    "height": 100
+  },
+  "handCount": 20
+}

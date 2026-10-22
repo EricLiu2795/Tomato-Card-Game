@@ -1008,6 +1008,26 @@ body {
 .hand-section {
   padding-top: 30px;
 }
+.hand-selection-help {
+  display: none;
+  color: #6d7e59;
+  font-size: 11px;
+  margin: -4px 0 9px;
+}
+.hand-cards {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hand-cards[data-drag-selecting],
+.hand-cards[data-drag-selecting] .playing-card {
+  cursor: grabbing;
+}
+@media (hover: hover) and (pointer: fine) {
+  .hand-selection-help {
+    display: block;
+  }
+}
 .hand-toolbar h2 {
   font-size: 17px;
 }
@@ -1932,5 +1952,353 @@ body {
   .game-choice:hover,
   .hero-play:hover {
     transform: none;
+  }
+}
+
+/* Mobile practice controls keep the save status and pause action visible while
+   pace and undo stay behind a compact disclosure. Desktop remains inline. */
+.practice-options-toggle {
+  display: none;
+}
+
+.practice-secondary {
+  display: contents;
+}
+
+@media (max-width: 640px), (max-height: 550px) {
+  .room-main {
+    padding-top: 8px;
+  }
+
+  .room-toolbar {
+    margin-bottom: 8px;
+  }
+
+  .practice-tools {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 6px 9px;
+    margin-bottom: 8px;
+  }
+
+  .practice-mark,
+  .practice-tools-copy strong {
+    display: none;
+  }
+
+  .practice-tools-copy {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .practice-tools-copy > div {
+    min-width: 0;
+  }
+
+  .practice-tools-copy div > span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+  }
+
+  .practice-tools strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .practice-controls {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 6px;
+    width: auto;
+    align-items: center;
+  }
+
+  .practice-options-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid #cbd1b7;
+    border-radius: 8px;
+    background: #faf8ed;
+    color: #4c6342;
+    font-size: 11px;
+    touch-action: manipulation;
+  }
+
+  .practice-options-toggle[aria-expanded="true"] {
+    background: #e8ebd8;
+    border-color: #aebd96;
+  }
+
+  .practice-secondary {
+    display: none;
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    padding-top: 2px;
+  }
+
+  .practice-tools.options-open .practice-secondary {
+    display: grid;
+  }
+
+  .practice-tools .pause-control {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .practice-options-toggle,
+  .practice-tools .pause-control {
+    min-height: 40px;
+    padding: 7px 9px;
+    white-space: nowrap;
+  }
+
+  .practice-tools .practice-pace {
+    min-width: 0;
+    margin-right: 0;
+  }
+
+  .practice-tools .practice-pace select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .in-room .hand-section {
+    --mobile-action-space: var(--mobile-action-height, 76px);
+    padding-bottom: calc(
+      var(--mobile-action-space) + env(safe-area-inset-bottom)
+    );
+  }
+
+  .in-room .hand-section > .action-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    min-height: 60px;
+    margin: 0;
+    padding: 8px max(12px, env(safe-area-inset-right))
+      max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    background: #fffdf5;
+    border-top: 1px solid #dfe2d3;
+    box-shadow: 0 -8px 24px #17322218;
+  }
+
+  .in-room .hand-section > .action-bar > span {
+    display: none;
+  }
+
+  .in-room .hand-section > .action-bar > div {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .in-room .hand-section > .action-bar .button {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  .in-room .hand-section > .action-bar .play-button {
+    flex: 1.25;
+  }
+
+  .in-room .hand-section [data-card-id],
+  .in-room .hand-section [data-testid^="submit-"],
+  .in-room .hand-section [data-testid^="bid-"] {
+    scroll-margin-bottom: calc(
+      var(--mobile-action-space) + env(safe-area-inset-bottom) + 12px
+    );
+  }
+
+  .in-room .hand-section :focus-visible {
+    scroll-margin-bottom: calc(
+      var(--mobile-action-space) + env(safe-area-inset-bottom) + 12px
+    );
+  }
+}
+
+@media (max-height: 550px) and (min-width: 600px) {
+  .in-room .site-header {
+    height: 44px;
+  }
+
+  .room-main {
+    padding-top: 4px;
+  }
+
+  .room-toolbar {
+    margin-bottom: 4px;
+  }
+
+  .practice-tools {
+    min-height: 44px;
+    padding: 4px 9px;
+    margin-bottom: 6px;
+  }
+
+  .hand-selection-help {
+    display: none;
+  }
+
+  .room-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(300px, 1fr);
+    column-gap: 14px;
+  }
+
+  .room-toolbar,
+  .practice-tools,
+  .connection-banner {
+    grid-column: 1 / -1;
+  }
+
+  .table-shell {
+    grid-column: 1;
+    min-width: 0;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .hand-section {
+    grid-column: 2;
+    min-width: 0;
+    padding-top: 0;
+  }
+
+  .in-room .hand-section {
+    padding-bottom: calc(
+      var(--mobile-action-space, var(--mobile-action-height, 76px)) + 96px
+    );
+  }
+
+  .hand-toolbar {
+    align-items: center;
+    flex-direction: row;
+    gap: 5px;
+    margin-bottom: 0;
+  }
+
+  .hand-tools {
+    width: auto;
+    margin-left: auto;
+    justify-content: flex-start;
+  }
+
+  .hand-cards,
+  .hand-cards.large-hand {
+    justify-content: flex-start;
+    gap: 2px;
+    row-gap: 8px;
+    padding: 4px 0 8px;
+  }
+
+  .hand-cards .playing-card,
+  .hand-cards.large-hand .playing-card {
+    width: 30px;
+    height: 40px;
+  }
+
+  .move-coach {
+    padding: 9px;
+    gap: 7px;
+  }
+
+  .in-room .hand-section > .action-bar {
+    left: calc(50% + 36px);
+    right: auto;
+    width: calc(50% - 36px);
+  }
+
+  .practice-tools-copy > div {
+    min-width: 0;
+  }
+
+  .practice-tools-copy div > span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@media (max-width: 640px) and (min-height: 551px) {
+  .hand-selection-help {
+    display: none;
+  }
+
+  .hand-section {
+    padding-top: 8px;
+  }
+
+  .hand-toolbar {
+    margin-bottom: 0;
+  }
+
+  .table-center {
+    top: 54%;
+  }
+
+  .seat-top,
+  .seat-self {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 5px;
+    row-gap: 1px;
+    width: 130px;
+    bottom: 3px;
+    align-items: center;
+    text-align: left;
+  }
+
+  .seat-top {
+    top: 4px;
+    bottom: auto;
+  }
+
+  .seat-top .avatar,
+  .seat-self .avatar {
+    grid-row: 1 / span 2;
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+  }
+
+  .seat-top .seat-name,
+  .seat-self .seat-name {
+    margin-top: 0;
+    max-width: none;
+  }
+
+  .seat-top .seat-details,
+  .seat-self .seat-details {
+    justify-content: flex-start;
+  }
+
+  .table-stage {
+    height: 220px;
+  }
+}
+
+@supports not (padding-bottom: env(safe-area-inset-bottom)) {
+  .in-room .hand-section > .action-bar {
+    padding-bottom: 8px;
   }
 }

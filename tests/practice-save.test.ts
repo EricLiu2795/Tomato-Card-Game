@@ -9,6 +9,7 @@ import {
 import {
   clearSavedPractice,
   PRACTICE_SAVE_KEY,
+  readPracticeSaveResult,
   readSavedPractice,
   savePractice,
 } from "../client/practice-save";
@@ -345,5 +346,87 @@ describe("practice persistence", () => {
     } as unknown as PracticeSession;
     expect(savePractice(invalid, null, "normal", store)).toBe(false);
     expect(store.raw()).toBeNull();
+  });
+
+  it("rejects a malformed Guandan tribute resume payload", () => {
+    const store = memoryStorage();
+    const session = createPractice(
+      "guandan",
+      "故障注入",
+      true,
+      seededRandom(3),
+    );
+    expect(savePractice(session, null, "normal", store)).toBe(true);
+    const payload = JSON.parse(store.raw()!);
+    payload.session.game.phase = "tribute";
+    payload.session.game.tribute = null;
+    store.setItem(PRACTICE_SAVE_KEY, JSON.stringify(payload));
+    const loaded = readSavedPractice(store);
+    expect(loaded).toBeNull();
+  });
+
+  it("reports missing, valid, invalid, unsupported, and unavailable load states", () => {
+    const store = memoryStorage();
+    expect(readPracticeSaveResult(store)).toEqual({ status: "missing" });
+
+    const session = createPractice(
+      "doudizhu",
+      "状态测试",
+      true,
+      seededRandom(4),
+    );
+    expect(savePractice(session, null, "normal", store)).toBe(true);
+    const validRaw = store.raw()!;
+    const valid = readPracticeSaveResult(store);
+    expect(valid.status).toBe("ok");
+    if (valid.status === "ok") expect(valid.raw).toBe(validRaw);
+
+    store.setItem(PRACTICE_SAVE_KEY, "{broken");
+    const invalid = readPracticeSaveResult(store);
+    expect(invalid.status).toBe("invalid");
+    if (invalid.status === "invalid") expect(invalid.raw).toBe("{broken");
+
+    const unsupportedRaw = JSON.stringify({ version: 99, future: true });
+    store.setItem(PRACTICE_SAVE_KEY, unsupportedRaw);
+    const unsupported = readPracticeSaveResult(store);
+    expect(unsupported.status).toBe("unsupported");
+    if (unsupported.status === "unsupported")
+      expect(unsupported.raw).toBe(unsupportedRaw);
+
+    const throwing = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    expect(readPracticeSaveResult(throwing).status).toBe("unavailable");
+  });
+
+  it("rejects a Guandan tribute selection that names a card outside the contributor hand", () => {
+    const store = memoryStorage();
+    const session = createPractice(
+      "guandan",
+      "故障注入",
+      true,
+      seededRandom(3),
+    );
+    if (session.game.kind !== "guandan") throw new Error("expected Guandan");
+    const absent = session.game.hands[0][0].id;
+    session.game.previousFinish = [0, 2, 1, 3];
+    session.game.phase = "tribute";
+    session.game.turn = 1;
+    session.game.tribute = {
+      kind: "double",
+      pairs: [
+        { from: 1, to: 0 },
+        { from: 3, to: 2 },
+      ],
+      contributors: [1, 3],
+      selections: { 3: absent },
+      returned: [],
+      discarded: [],
+      resisted: false,
+    };
+    expect(savePractice(session, null, "normal", store)).toBe(false);
+    expect(readSavedPractice(store)).toBeNull();
   });
 });

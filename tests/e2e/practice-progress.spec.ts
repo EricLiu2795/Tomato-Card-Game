@@ -242,6 +242,11 @@ test("practice controls remain usable at a narrow viewport", async ({
   await page.setViewportSize({ width: 320, height: 720 });
   await openPractice(page, "guandan");
   await expect(page.getByTestId("practice-pause")).toBeVisible();
+  await page.getByTestId("practice-options").click();
+  await expect(page.getByTestId("practice-options")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
   await expect(page.getByTestId("practice-pace")).toBeVisible();
   expect(
     await page.evaluate(

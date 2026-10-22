@@ -1,0 +1,249 @@
+{
+  "invitation": {
+    "status": "passed",
+    "independentContexts": 2,
+    "invitationPrefilled": true,
+    "joinedThroughUi": true,
+    "assignedSeat": 1,
+    "snapshotCounts": [
+      3,
+      1
+    ],
+    "privacyErrors": [],
+    "pageErrors": [],
+    "completedAt": "2026-10-22T20:47:34.157Z"
+  },
+  "doudizhu": {
+    "status": "passed",
+    "legalUiMoves": 70,
+    "completedHands": 1,
+    "soundObservation": [
+      {
+        "name": "地主小番茄",
+        "playbackInvocations": [
+          {
+            "src": "http://127.0.0.1:5173/sounds/voices/you-are-so-right.mp3",
+            "volume": 0.38376
+          },
+          {
+            "src": "http://127.0.0.1:5173/sounds/voices/bro-really.mp3",
+            "volume": 0.38376
+          }
+        ],
+        "receivedEventIds": [
+          "e2db7e70-e507-4a1f-a6a0-ced7ceaaea75",
+          "151e0ee9-26e8-4d71-9281-7d103d0c28d6",
+          "d1d31a25-b8be-43f3-a557-5af32dc6d998",
+          "b716de01-a1c5-4744-b1e5-e42027bb03ca"
+        ]
+      },
+      {
+        "name": "农民牛油果",
+        "playbackInvocations": [],
+        "receivedEventIds": [
+          "e2db7e70-e507-4a1f-a6a0-ced7ceaaea75",
+          "151e0ee9-26e8-4d71-9281-7d103d0c28d6",
+          "d1d31a25-b8be-43f3-a557-5af32dc6d998",
+          "b716de01-a1c5-4744-b1e5-e42027bb03ca"
+        ]
+      },
+      {
+        "name": "农民小橘子",
+        "playbackInvocations": [],
+        "receivedEventIds": [
+          "e2db7e70-e507-4a1f-a6a0-ced7ceaaea75",
+          "151e0ee9-26e8-4d71-9281-7d103d0c28d6",
+          "d1d31a25-b8be-43f3-a557-5af32dc6d998",
+          "b716de01-a1c5-4744-b1e5-e42027bb03ca"
+        ]
+      }
+    ],
+    "playerContexts": 3,
+    "perPlayer": [
+      {
+        "name": "地主小番茄",
+        "seat": 0,
+        "inspectedSnapshots": 83,
+        "uiWebSockets": 1,
+        "errors": [],
+        "pageErrors": [],
+        "privacyErrors": []
+      },
+      {
+        "name": "农民牛油果",
+        "seat": 1,
+        "inspectedSnapshots": 79,
+        "uiWebSockets": 3,
+        "errors": [],
+        "pageErrors": [],
+        "privacyErrors": []
+      },
+      {
+        "name": "农民小橘子",
+        "seat": 2,
+        "inspectedSnapshots": 79,
+        "uiWebSockets": 1,
+        "errors": [],
+        "pageErrors": [],
+        "privacyErrors": []
+      }
+    ],
+    "finalPublicGame": {
+      "kind": "doudizhu",
+      "phase": "finished",
+      "handNumber": 1,
+      "finishOrder": [
+        0
+      ],
+      "winnerTeam": "landlord",
+      "scores": [
+        6,
+        -3,
+        -3
+      ],
+      "removedCount": 0
+    },
+    "physicalAudioVerified": false,
+    "completedAt": "2026-10-22T20:37:38.537Z"
+  },
+  "guandan": {
+    "status": "passed",
+    "legalUiMoves": 485,
+    "completedHands": 2,
+    "soundObservation": [
+      {
+        "name": "一座小番茄",
+        "playbackInvocations": [
+          {
+            "src": "http://127.0.0.1:5173/sounds/voices/you-are-so-right.mp3",
+            "volume": 0.38376
+          },
+          {
+            "src": "http://127.0.0.1:5173/sounds/voices/bro-really.mp3",
+            "volume": 0.38376
+          }
+        ],
+        "receivedEventIds": [
+          "1d6390dd-9d63-402c-9b62-c562b52c2951",
+          "ba30c06a-8de8-4658-b9ab-8e8800b640f0",
+          "3cfeb5c9-010c-4f2f-b96a-183f480965ca",
+          "c70d750b-4e49-4e42-996c-8c008058656e"
+        ]
+      },
+      {
+        "name": "二座牛油果",
+        "playbackInvocations": [],
+        "receivedEventIds": [
+          "1d6390dd-9d63-402c-9b62-c562b52c2951",
+          "ba30c06a-8de8-4658-b9ab-8e8800b640f0",
+          "3cfeb5c9-010c-4f2f-b96a-183f480965ca",
+          "c70d750b-4e49-4e42-996c-8c008058656e"
+        ]
+      },
+      {
+        "name": "三座小橘子",
+        "playbackInvocations": [],
+        "receivedEventIds": [
+          "1d6390dd-9d63-402c-9b62-c562b52c2951",
+          "ba30c06a-8de8-4658-b9ab-8e8800b640f0",
+          "3cfeb5c9-010c-4f2f-b96a-183f480965ca",
+          "c70d750b-4e49-4e42-996c-8c008058656e"
+        ]
+      },
+      {
+        "name": "四座小葡萄",
+        "playbackInvocations": [
+          {
+            "src": "http://127.0.0.1:5173/sounds/voices/you-are-so-right.mp3",
+            "volume": 0.38376
+          },
+          {
+            "src": "http://127.0.0.1:5173/sounds/voices/bro-really.mp3",
+            "volume": 0.38376
+          }
+        ],
+        "receivedEventIds": [
+          "1d6390dd-9d63-402c-9b62-c562b52c2951",
+          "ba30c06a-8de8-4658-b9ab-8e8800b640f0",
+          "3cfeb5c9-010c-4f2f-b96a-183f480965ca",
+          "c70d750b-4e49-4e42-996c-8c008058656e"
+        ]
+      }
+    ],
+    "mobile": {
+      "portrait": "390x844",
+      "landscape": "844x390",
+      "cardsReachableEach": 27,
+      "horizontalOverflow": false
+    },
+    "tributePhases": [
+      "tribute",
+      "tribute",
+      "return",
+      "return",
+      "discard",
+      "discard"
+    ],
+    "resisted": false,
+    "tributeKind": "double",
+    "reconnectedAfterTribute": true,
+    "reconnectedAfterDiscard": true,
+    "mobileTributeControls": true,
+    "coverageNote": "Double tribute, both returns, one discard, one skip and mid-phase reconnects observed.",
+    "playerContexts": 4,
+    "perPlayer": [
+      {
+        "name": "一座小番茄",
+        "seat": 0,
+        "inspectedSnapshots": 516,
+        "uiWebSockets": 5,
+        "errors": [],
+        "pageErrors": [],
+        "privacyErrors": []
+      },
+      {
+        "name": "二座牛油果",
+        "seat": 1,
+        "inspectedSnapshots": 512,
+        "uiWebSockets": 9,
+        "errors": [],
+        "pageErrors": [],
+        "privacyErrors": []
+      },
+      {
+        "name": "三座小橘子",
+        "seat": 2,
+        "inspectedSnapshots": 518,
+        "uiWebSockets": 7,
+        "errors": [],
+        "pageErrors": [],
+        "privacyErrors": []
+      },
+      {
+        "name": "四座小葡萄",
+        "seat": 3,
+        "inspectedSnapshots": 517,
+        "uiWebSockets": 5,
+        "errors": [],
+        "pageErrors": [],
+        "privacyErrors": []
+      }
+    ],
+    "finalPublicGame": {
+      "kind": "guandan",
+      "phase": "playing",
+      "handNumber": 3,
+      "finishOrder": [],
+      "winnerTeam": null,
+      "levels": [
+        8,
+        2
+      ],
+      "currentLevel": 8,
+      "advancement": 0,
+      "removedCount": 1
+    },
+    "physicalAudioVerified": false,
+    "completedAt": "2026-10-22T20:46:59.638Z"
+  }
+}

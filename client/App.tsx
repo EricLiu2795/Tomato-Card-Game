@@ -30,6 +30,8 @@ import {
   type SoundSettings,
 } from "./audio";
 import { zhCN } from "./i18n";
+import { useHandRangeSelection } from "./useHandRangeSelection";
+import { useMobileActionArea } from "./useMobileActionArea";
 import { MoveCoach } from "./MoveCoach";
 import {
   PracticeTools,
@@ -37,11 +39,17 @@ import {
   PRACTICE_DELAYS,
 } from "./PracticeTools";
 import {
-  readSavedPractice,
-  savePractice,
+  readPracticeSaveResult,
+  PRACTICE_SAVE_KEY,
   type SavedPractice,
   type PracticePace,
 } from "./practice-save";
+import {
+  acquirePracticeOwner,
+  preserveRejectedPractice,
+  type PracticeOwner,
+} from "./practice-owner";
+import { PracticeRecovery } from "./PracticeRecovery";
 import { selectionCanPlay } from "../shared/move-assistance";
 import { rankPracticeMoves } from "./practice-strategy";
 import {
@@ -392,7 +400,15 @@ const voiceMoods: Record<string, string> = {
 export default function App() {
   const [practice, setPractice] = useState<PracticeSession | null>(null);
   const practiceRef = useRef<PracticeSession | null>(null);
-  const [savedPractice, setSavedPractice] = useState(readSavedPractice);
+  const [saveRead, setSaveRead] = useState(readPracticeSaveResult);
+  const [savedPractice, setSavedPractice] = useState<SavedPractice | null>(
+    () => (saveRead.status === "ok" ? saveRead.save : null),
+  );
+  const practiceOwner = useRef<PracticeOwner | null>(null);
+  const practiceOpening = useRef(false);
+  const practiceOpenGeneration = useRef(0);
+  const [practiceConflict, setPracticeConflict] = useState("");
+  const practiceConflictRef = useRef(false);
   const [checkpoint, setCheckpoint] = useState<PracticeSession | null>(null);
   const [practicePace, setPracticePace] = useState<PracticePace>(
     () => savedPractice?.pace ?? "normal",
@@ -518,9 +534,34 @@ export default function App() {
     setHintIndex(0);
   }, []);
 
+  const blockPracticeSave = useCallback(() => {
+    practiceConflictRef.current = true;
+    practicePausedRef.current = true;
+    setPracticePaused(true);
+    setPracticeSaved(false);
+    setPracticeConflict(
+      "存档已在其他页面更改，本页已暂停以保护进度。请返回大厅，再继续最新存档。",
+    );
+  }, []);
+
+  const releasePracticeOwner = useCallback(() => {
+    practiceOpenGeneration.current += 1;
+    practiceOwner.current?.release();
+    practiceOwner.current = null;
+  }, []);
+
   useEffect(() => {
-    if (!practice) return;
-    setPracticeSaved(savePractice(practice, checkpoint, practicePace));
+    if (!practice || practiceConflictRef.current) return;
+    const result =
+      practiceOwner.current?.save(practice, checkpoint, practicePace) ??
+      "unavailable";
+    if (result === "conflict") {
+      blockPracticeSave();
+      return;
+    }
+    setPracticeSaved(result === "saved");
+    // The lobby must describe the last durable save, not unsaved memory.
+    if (result !== "saved") return;
     setSavedPractice({
       version: 1,
       savedAt: Date.now(),
@@ -528,7 +569,43 @@ export default function App() {
       checkpoint,
       pace: practicePace,
     });
-  }, [practice, checkpoint, practicePace]);
+  }, [practice, checkpoint, practicePace, blockPracticeSave]);
+
+  useEffect(() => {
+    const refresh = () => {
+      const result = readPracticeSaveResult();
+      setSaveRead(result);
+      if (!practiceRef.current) {
+        setSavedPractice(result.status === "ok" ? result.save : null);
+        setPracticeSaved(result.status === "ok");
+      } else if (practiceOwner.current) {
+        try {
+          if (!practiceOwner.current.matches()) blockPracticeSave();
+        } catch {
+          setPracticeSaved(false);
+        }
+      }
+    };
+    const storage = (event: StorageEvent) => {
+      if (event.key === PRACTICE_SAVE_KEY || event.key === null) refresh();
+    };
+    const onPageHide = () => {
+      // A bfcache page must not resume bot writes after releasing ownership.
+      if (practiceRef.current) blockPracticeSave();
+      releasePracticeOwner();
+    };
+    window.addEventListener("storage", storage);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("pageshow", refresh);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("storage", storage);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("pageshow", refresh);
+      window.removeEventListener("pagehide", onPageHide);
+      releasePracticeOwner();
+    };
+  }, [blockPracticeSave, releasePracticeOwner]);
 
   useEffect(() => {
     const onVisibility = () => setTabHidden(document.hidden);
@@ -667,6 +744,7 @@ export default function App() {
     (action: RoomAction) => {
       const local = practiceRef.current;
       if (local) {
+        if (practiceConflictRef.current) return;
         if (action.type === "SEND_REACTION" || action.type === "THROW_TOMATO") {
           receiveEvent({
             type: "EVENT",
@@ -744,6 +822,8 @@ export default function App() {
     setTomatoMode(false);
     setPanel(null);
     setCheckpoint(previous);
+    practiceConflictRef.current = false;
+    setPracticeConflict("");
     practicePausedRef.current = false;
     setPracticePaused(false);
     previousAudioSnapshot.current = null;
@@ -757,17 +837,79 @@ export default function App() {
     window.scrollTo({ top: 0 });
   };
 
+  const beginPractice = async (newSession?: PracticeSession) => {
+    if (practiceOpening.current || practiceRef.current) return;
+    practiceOpening.current = true;
+    const generation = practiceOpenGeneration.current;
+    try {
+      const acquired = await acquirePracticeOwner();
+      if (generation !== practiceOpenGeneration.current) {
+        if (acquired.status === "owned") acquired.owner.release();
+        return;
+      }
+      const latest = readPracticeSaveResult();
+      setSaveRead(latest);
+      if (latest.status !== "unavailable")
+        setSavedPractice(latest.status === "ok" ? latest.save : null);
+      if (acquired.status === "busy") {
+        notify(
+          "练习正在另一个标签页进行。请先在那里返回大厅或关闭页面，再继续；最新进度没有更改。",
+        );
+        return;
+      }
+      let owner = acquired.status === "owned" ? acquired.owner : null;
+      if (latest.status === "unavailable") {
+        // Never replace a payload we were unable to inspect, even if storage
+        // becomes available again between this read and the autosave effect.
+        owner?.release();
+        owner = null;
+      }
+      if (newSession) {
+        if (
+          owner &&
+          (latest.status === "invalid" || latest.status === "unsupported")
+        ) {
+          if (!preserveRejectedPractice(latest.raw)) {
+            owner.release();
+            notify(
+              "无法保留原始存档备份，未开始新练习。请先下载原始存档并检查浏览器存储空间。",
+            );
+            return;
+          }
+          notify("原始存档已另存为本地备份，新练习不会删除它。");
+        }
+        practiceOwner.current = owner;
+        openPractice(newSession);
+        playCue("deal");
+      } else {
+        // Read under ownership, never resume the lobby's cached session.
+        const saved = latest.status === "ok" ? latest.save : null;
+        if (!saved) {
+          owner?.release();
+          notify("没有可恢复的练习进度；原始数据（如有）已保留。");
+          return;
+        }
+        practiceOwner.current = owner;
+        setPracticePace(saved.pace);
+        openPractice(saved.session, saved.checkpoint);
+      }
+      if (!owner)
+        notify(
+          "浏览器暂不支持安全的跨标签页保存。本次仅在当前页面练习，原有存档不会被覆盖。",
+        );
+    } finally {
+      practiceOpening.current = false;
+    }
+  };
   const startPractice = (kind: GameKind, name: string, houseRule: boolean) => {
-    openPractice(createPractice(kind, name.trim() || "番茄同学", houseRule));
-    playCue("deal");
+    void beginPractice(
+      createPractice(kind, name.trim() || "番茄同学", houseRule),
+    );
   };
-  const resumePractice = () => {
-    if (!savedPractice) return;
-    setPracticePace(savedPractice.pace);
-    openPractice(savedPractice.session, savedPractice.checkpoint);
-  };
+  const resumePractice = () => void beginPractice();
   const undoPractice = () => {
-    if (!checkpoint || !practiceRef.current) return;
+    if (!checkpoint || !practiceRef.current || practiceConflictRef.current)
+      return;
     previousAudioSnapshot.current = null;
     setCheckpoint(null);
     setSelected([]);
@@ -777,11 +919,13 @@ export default function App() {
     notify("已回到你上次操作之前，电脑的后续出牌也已撤回。");
   };
   const togglePracticePause = () => {
+    if (practiceConflictRef.current) return;
     const next = !practicePausedRef.current;
     practicePausedRef.current = next;
     setPracticePaused(next);
   };
   const enterRoom = (code: string) => {
+    releasePracticeOwner();
     practiceRef.current = null;
     setPractice(null);
     snapshotRef.current = null;
@@ -797,6 +941,11 @@ export default function App() {
     history.replaceState(null, "", url);
   };
   const leaveRoom = () => {
+    releasePracticeOwner();
+    const latest = readPracticeSaveResult();
+    setSaveRead(latest);
+    setSavedPractice(latest.status === "ok" ? latest.save : null);
+    setPracticeSaved(latest.status === "ok");
     clearTimeout(pendingTimeout.current);
     pendingRef.current = null;
     setPending(null);
@@ -905,6 +1054,10 @@ export default function App() {
           a.deck - b.deck,
     );
   }, [snapshot, sortBy]);
+  const handSelectionRef = useHandRangeSelection(
+    `${snapshot?.roomCode}:${snapshot?.revision}:${panel}:${hand.map((card) => card.id).join(",")}`,
+    setSelected,
+  );
   const selection = useMemo(
     () => hand.filter((card) => selected.includes(card.id)),
     [hand, selected],
@@ -1098,22 +1251,25 @@ export default function App() {
       </header>
 
       {!isRoom ? (
-        <Lobby
-          kind={rulesKind}
-          onKindChange={setRulesKind}
-          initialRoom={roomCode}
-          restoring={!!roomCode && !needsJoin}
-          onEnter={enterRoom}
-          onRules={(kind) => {
-            setRulesKind(kind);
-            setPanel("rules");
-          }}
-          onError={notify}
-          onPractice={startPractice}
-          savedPractice={savedPractice}
-          practiceSaved={practiceSaved}
-          onResume={resumePractice}
-        />
+        <>
+          <PracticeRecovery result={saveRead} />
+          <Lobby
+            kind={rulesKind}
+            onKindChange={setRulesKind}
+            initialRoom={roomCode}
+            restoring={!!roomCode && !needsJoin}
+            onEnter={enterRoom}
+            onRules={(kind) => {
+              setRulesKind(kind);
+              setPanel("rules");
+            }}
+            onError={notify}
+            onPractice={startPractice}
+            savedPractice={savedPractice}
+            practiceSaved={practiceSaved}
+            onResume={resumePractice}
+          />
+        </>
       ) : (
         <main
           className="room-main"
@@ -1181,6 +1337,15 @@ export default function App() {
               onPace={setPracticePace}
               onUndo={undoPractice}
             />
+          )}
+          {practice && practiceConflict && (
+            <div
+              className="connection-banner"
+              role="alert"
+              data-testid="practice-conflict"
+            >
+              {practiceConflict}
+            </div>
           )}
           <section className="table-shell" aria-label="游戏牌桌">
             <div className="table-topline">
@@ -1581,8 +1746,14 @@ export default function App() {
                 </button>
               </div>
             </div>
+            {hand.length > 0 && (
+              <p className="hand-selection-help">
+                按住鼠标划过可连选 · 从已选牌拖动可取消
+              </p>
+            )}
             {hand.length > 0 ? (
               <div
+                ref={handSelectionRef}
                 className={`hand-cards ${hand.length > 20 ? "large-hand" : ""}`}
                 data-testid="hand"
               >
@@ -2506,6 +2677,7 @@ function ActionBar({
   onHint: () => void;
   practice: boolean;
 }) {
+  const actionRef = useMobileActionArea<HTMLDivElement>();
   const { game, players, selfId, hostId } = snapshot;
   const self = players.find((player) => player.id === selfId)!;
   const seat = self.seat;
@@ -2515,7 +2687,7 @@ function ActionBar({
   const isHost = selfId === hostId;
   if (!game)
     return (
-      <div className="action-bar lobby-action">
+      <div ref={actionRef} className="action-bar lobby-action">
         <span>
           {allReady
             ? "全员到齐，准备开局！"
@@ -2553,7 +2725,7 @@ function ActionBar({
     );
   if (game.phase === "finished")
     return (
-      <div className="action-bar finished-action">
+      <div ref={actionRef} className="action-bar finished-action">
         <span>
           {isHost
             ? practice
@@ -2576,7 +2748,7 @@ function ActionBar({
     );
   if (game.phase === "bidding")
     return (
-      <div className="action-bar">
+      <div ref={actionRef} className="action-bar">
         <span className="action-hint">
           {isMyTurn
             ? "叫一个比当前更高的分数，或选择不叫"
@@ -2633,7 +2805,7 @@ function ActionBar({
           ? { type: "SELECT_RETURN_CARD", cardId: selected[0] }
           : { type: "DISCARD_HOUSE_RULE", cardId: selected[0] };
     return (
-      <div className="action-bar">
+      <div ref={actionRef} className="action-bar">
         <span className="action-hint">
           {eligible
             ? game.phase === "discard"
@@ -2676,7 +2848,7 @@ function ActionBar({
     );
   }
   return (
-    <div className="action-bar">
+    <div ref={actionRef} className="action-bar">
       <span className={`action-hint ${isMyTurn ? "active-hint" : ""}`}>
         {isMyTurn ? (
           <>

@@ -1,0 +1,28 @@
+{
+  "base": "b73e4f9461c1434b47662d0c904c67e43e7bf5cb",
+  "fixture": "Guandan currentLevel=2, table single 9, weak selection single 3, legal stronger selection K",
+  "rendering": "react-dom/server against the original MoveCoach component",
+  "legality": "selectionCanPlay and classifyGuandanResponse from shared/move-assistance and shared/guandan-combinations",
+  "command": "npx tsx repro-b73.tsx",
+  "output": {
+    "weak3Against9": {
+      "title": "这些牌还没组成一种牌型。",
+      "detail": "试着选对子、三张或顺子；点「提示」也能自动选出一手合法牌。",
+      "combination": null,
+      "canPlay": false
+    },
+    "validKAgainst9OnBotTurn": {
+      "title": "已选单张 K · 出 1 张，剩 1 张",
+      "detail": "这手可以压过单张 9。点「出牌」确认，也可以再点「提示」换个思路。",
+      "combination": {
+        "kind": "single",
+        "size": 1,
+        "power": 13,
+        "chain": 1,
+        "bomb": 0,
+        "label": "单张 K"
+      },
+      "canPlay": true
+    }
+  }
+}
