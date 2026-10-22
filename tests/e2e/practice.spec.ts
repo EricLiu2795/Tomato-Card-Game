@@ -90,3 +90,32 @@ test("practice hand remains usable on a 390px viewport", async ({ page }) => {
     await expect(card).toHaveAttribute("aria-pressed", "false");
   }
 });
+
+test("practice shortcuts work from focused buttons without stealing Enter", async ({
+  page,
+}) => {
+  await openPractice(page);
+  const hand = page.getByTestId("hand");
+  const cards = hand.locator("[data-card-id]");
+  const selected = hand.locator('[data-card-id][aria-pressed="true"]');
+  const hint = page.getByTestId("hint");
+
+  await hint.click();
+  await expect(hint).toBeFocused();
+  await expect(selected).not.toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(selected).toHaveCount(0);
+  await page.keyboard.press("h");
+  await expect(selected).not.toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(selected).toHaveCount(0);
+
+  const firstCard = cards.first();
+  await firstCard.focus();
+  await page.keyboard.press("Enter");
+  await expect(firstCard).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("play-cards")).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await expect(firstCard).toHaveAttribute("aria-pressed", "false");
+  await expect(cards).toHaveCount(27);
+});

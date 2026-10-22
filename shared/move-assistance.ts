@@ -284,11 +284,12 @@ function addGuandanCandidates(
         addUnique(selected, add, seen);
   }
   for (const each of [2, 3]) {
-    for (let start = 1; start <= 13; start++) {
+    const count = each === 2 ? 3 : 2;
+    for (let start = 1; start <= 15 - count; start++) {
       for (const selected of pickPattern(
         groups,
         wilds,
-        guandanRankSlots(start, 2, each),
+        guandanRankSlots(start, count, each),
       ))
         addUnique(selected, add, seen);
     }

@@ -850,7 +850,15 @@ export default function App() {
       const target = event.target;
       if (
         target instanceof Element &&
-        target.closest("input, textarea, select, button, [contenteditable]")
+        target.closest("input, textarea, select, [contenteditable]")
+      )
+        return;
+      // H and Escape remain available after clicking a card or the hint button.
+      // Enter still activates the focused button instead of submitting a hand.
+      if (
+        event.key === "Enter" &&
+        target instanceof Element &&
+        target.closest("button")
       )
         return;
       if (

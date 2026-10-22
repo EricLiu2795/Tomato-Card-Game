@@ -96,6 +96,115 @@ describe("move assistance", () => {
     expect(hand).toEqual(before);
   });
 
+  it.each([
+    {
+      name: "ordinary consecutive pairs",
+      ranks: [6, 7, 8],
+      target: [2, 3, 4],
+      power: 8,
+    },
+    {
+      name: "the high QQKKAA boundary",
+      ranks: [12, 13, 14],
+      target: [9, 10, 11],
+      power: 14,
+    },
+  ])("suggests $name over a lower pair run", ({ ranks, target, power }) => {
+    const deck = makeDeck(2);
+    const hand = ranks.flatMap((rank) => take(deck, rank, 2));
+    const current = game(
+      "guandan",
+      guandanTrick(target.flatMap((rank) => take(deck, rank, 2))),
+    );
+
+    expect(selectionCanPlay(hand, current)).toBe(true);
+    const moves = suggestMoves(hand, current);
+    const response = moves.find((move) => move.combination.kind === "pair_run");
+    expect(response?.combination).toMatchObject({ size: 6, chain: 3, power });
+    expect(response?.cards.map((card) => card.id).sort()).toEqual(
+      hand.map((card) => card.id).sort(),
+    );
+    expect(moves.every((move) => selectionCanPlay(move.cards, current))).toBe(
+      true,
+    );
+  });
+
+  it("uses a level wildcard to complete the third consecutive pair in a response", () => {
+    const deck = makeDeck(2);
+    const wild = take(deck, 7, 1, "H")[0];
+    const hand = [
+      ...take(deck, 8, 2),
+      ...take(deck, 9, 2),
+      ...take(deck, 10, 1),
+      wild,
+    ];
+    const current = game(
+      "guandan",
+      guandanTrick([3, 4, 5].flatMap((rank) => take(deck, rank, 2))),
+    );
+
+    expect(selectionCanPlay(hand, current)).toBe(true);
+    const response = suggestMoves(hand, current).find(
+      (move) => move.combination.kind === "pair_run",
+    );
+    expect(response?.combination).toMatchObject({
+      size: 6,
+      chain: 3,
+      power: 10,
+    });
+    expect(response?.combination.substitutions?.[wild.id]).toMatchObject({
+      rank: 10,
+    });
+    expect(response?.cards.map((card) => card.id).sort()).toEqual(
+      hand.map((card) => card.id).sort(),
+    );
+  });
+
+  it("retains the documented low-ace AA2233 pair-run lead", () => {
+    const deck = makeDeck(2);
+    const hand = [14, 2, 3].flatMap((rank) => take(deck, rank, 2));
+    const current = game("guandan");
+    const response = suggestMoves(hand, current).find(
+      (move) => move.combination.kind === "pair_run",
+    );
+    expect(response?.combination).toMatchObject({
+      size: 6,
+      chain: 3,
+      power: 3,
+    });
+    expect(selectionCanPlay(response?.cards ?? [], current)).toBe(true);
+  });
+
+  it.each([
+    {
+      name: "ordinary consecutive triples",
+      ranks: [5, 6],
+      target: [2, 3],
+      power: 6,
+    },
+    {
+      name: "the high KKKAAA boundary",
+      ranks: [13, 14],
+      target: [10, 11],
+      power: 14,
+    },
+    { name: "the low-ace AAA222 lead", ranks: [14, 2], target: [], power: 2 },
+  ])("preserves $name", ({ ranks, target, power }) => {
+    const deck = makeDeck(2);
+    const hand = ranks.flatMap((rank) => take(deck, rank, 3));
+    const current = game(
+      "guandan",
+      target.length
+        ? guandanTrick(target.flatMap((rank) => take(deck, rank, 3)))
+        : null,
+    );
+    const response = suggestMoves(hand, current).find(
+      (move) => move.combination.kind === "triple_run",
+    );
+    expect(response?.combination).toMatchObject({ size: 6, chain: 2, power });
+    expect(selectionCanPlay(response?.cards ?? [], current)).toBe(true);
+  });
+
   it("offers special bombs when they are the only way over a trick", () => {
     const deck = makeDeck(2);
     const target = take(deck, 14, 3);

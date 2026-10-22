@@ -40,4 +40,4 @@ Wrangler 自带开发调试器属于本机开发者权限边界，不是应用�
 
 ## 互动和素材
 
-`shared/soundboard.ts` 是唯一事件注册表；服务端只认可已注册 ID。房间广播 sender、target、eventId，客户端渲染气泡/番茄并按本地声音和 reduced-motion 设置播放。社交事件不会改变牌局胜负或手牌。语音为普通浏览器 TTS 或明确配置的授权本地音频，不下载访谈片段，也不克隆声音。
+`shared/soundboard.ts` 是唯一事件注册表；服务端只认可已注册 ID。房间广播 sender、target、eventId，客户端渲染气泡/番茄并按本地声音和 reduced-motion 设置播放。社交事件不会改变牌局胜负或手牌。当前短句使用本地 MP3，音效由 `client/audio.ts` 的 Web Audio 合成；轻声模式或加载失败会改用提示音，不调用浏览器 TTS。MP3 的生成脚本、通用声音 ID 和参数见 `scripts/generate-voices.py` 与 `public/sounds/README.md`；没有访谈片段、真人参考录音或克隆流程。公开再分发许可依据的待确认项见 KNOWN_LIMITATIONS.md。
